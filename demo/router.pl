@@ -83,7 +83,7 @@ print STDERR "reading wamp\n";
                 catch {
                     if ( try { $_->isa('Net::WAMP::X::EmptyRead') } ) {
 print STDERR "EMPTY READ\n";
-                        $router->remove_from_io_store($io);
+                        $router->forget_io($io);
                         $select->remove($fh);
                         delete $fd_io{fileno $fh};
                         close $fh;

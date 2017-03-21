@@ -9,12 +9,23 @@ use parent qw(
     Net::WAMP::Peer
 );
 
+use Module::Load ();
+
 use lib '/Users/felipe/code/p5-Protocol-WAMP/lib';
 use Protocol::WAMP::Messages ();
 use Protocol::WAMP::Utils ();
 
 sub new {
-    return bless {}, shift;
+    my ($class, $state_obj) = @_;
+
+    $state_obj ||= do {
+        Module::Load::load('Net::WAMP::Router::State::Memory');
+        Net::WAMP::Router::State::Memory->new();
+    };
+
+    return bless {
+        _state => $state_obj,
+    }, $class;
 }
 
 sub route_message {
@@ -36,16 +47,10 @@ print STDERR Dumper $handler2_cr;
     return $msg;
 }
 
-sub remove_from_io_store {
+sub forget_io {
     my ($self, $io) = @_;
 
-#use Data::Dumper;
-#print STDERR Dumper( "REMOVE", $self->{'_io_store'}{$io} );
-    for my $hr_key ( values %{ $self->{'_io_store'}{$io}{'_to_delete'} } ) {
-        delete $hr_key->[0]{ $hr_key->[1] };
-    }
-
-    delete $self->{'_io_store'}{$io};
+    $self->{'_state'}->remove_io($io);
 
     return;
 }
@@ -75,27 +80,43 @@ sub GET_DETAILS_HR {
 
 #----------------------------------------------------------------------
 
+sub _get_realm_for_io {
+    my ($self, $io) = @_;
+
+    return $self->{'_state'}->get_io_realm($io);
+}
+
 sub _receive_HELLO {
     my ($self, $io, $msg) = @_;
 
-    my $details_hr = $self->GET_DETAILS_HR();
+    if ($self->{'_state'}->io_exists($io)) {
+        die "$self already received HELLO from $io!";
+    }
 
     #TODO: validate HELLO
 
-    my $realm = $msg->get('Realm') or do {
-        die "Missing “Realm” in HELLO!";  #XXX
-    };
+    $self->{'_state'}->add_io(
+        $io,
+        $msg->get('Realm') || do {
+            die "Missing “Realm” in HELLO!";  #XXX
+        },
+    );
 
-    $self->{'_io_peer_roles'}{$io} = $msg->get('Details')->{'roles'} or do {
-        die "Missing “Details.roles” in HELLO!";  #XXX
-    };
-
-    #------------------------------
+    $self->{'_state'}->set_io_property(
+        $io,
+        'peer_roles',
+        $msg->get('Details')->{'roles'} || do {
+            die "Missing “Details.roles” in HELLO!";  #XXX
+        },
+    );
 
     my $session_id = Protocol::WAMP::Utils::generate_global_id();
 
-    $self->{'_io_session'}{$io} = $session_id;
-    $self->{'_io_realm'}{$io} = $realm;
+    $self->{'_state'}->set_io_property(
+        $io,
+        'session_id',
+        $session_id,
+    );
 
     $self->_send_WELCOME($io, $session_id);
 
@@ -113,19 +134,19 @@ print STDERR "SENDING WELCOME\n";
         $self->GET_DETAILS_HR(),
     );
 
-    $self->{'_io_handshake_done'}{$io} = 1;
-
     return $msg;
 }
 
 sub _receive_GOODBYE {
     my ($self, $io, $msg) = @_;
 
-    delete $self->{'_io_session'}{$io} or do {
-        die "Got GOODBYE without a registered session!";
-    };
+#    delete $self->{'_io_session'}{$io} or do {
+#        die "Got GOODBYE without a registered session!";
+#    };
+#
+#    delete $self->{'_io_realm'}{$io};
 
-    delete $self->{'_io_realm'}{$io};
+    $self->{'_state'}->remove_io($io);
 
     if ($self->{'_sent_GOODBYE'}) {
         $self->{'_finished'} = 1;
@@ -144,14 +165,6 @@ sub _receive_GOODBYE {
 
 
 #----------------------------------------------------------------------
-
-sub _get_realm_for_io {
-    my ($self, $io) = @_;
-
-    return $self->{'_io_realm'}{$io} || do {
-        die "No known realm for IO object “$io”!";
-    };
-}
 
 sub _create_and_send_msg {
     my ($self, $io, $name, @parts) = @_;
@@ -182,9 +195,9 @@ sub _create_and_send_session_msg {
 sub _send_msg {
     my ($self, $io, $msg) = @_;
 
-    if (!$self->{'_io_session'}{$io}) {
-        die "Already finished!";    #XXX
-    }
+    #if (!$self->{'_io_session'}{$io}) {
+    #    die "Already finished!";    #XXX
+    #}
 
     #cache
     $self->{'_io_peer_groks_msg'}{$io}{$msg->get_type()} ||= do {
@@ -240,7 +253,7 @@ sub io_peer_is {
 
     $self->_verify_handshake();
 
-    return $self->{'_io_peer_roles'}{$role} ? 1 : 0;
+    return $self->{'_state'}->get_io_property($io, 'peer_roles')->{$role} ? 1 : 0;
 }
 
 sub io_peer_role_supports_boolean {
@@ -251,7 +264,9 @@ sub io_peer_role_supports_boolean {
 
     $self->_verify_handshake();
 
-    if ( my $rolfeat = $self->{'_io_peer_roles'}{$io}{$role} ) {
+    my $peer_roles = $self->{'_state'}->get_io_property($io, 'peer_roles');
+
+    if ( my $rolfeat = $peer_roles->{$role} ) {
         if ( my $features_hr = $rolfeat->{'features'} ) {
             my $val = $features_hr->{$feature};
             return 0 if !defined $val;

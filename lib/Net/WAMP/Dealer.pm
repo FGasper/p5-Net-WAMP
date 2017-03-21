@@ -24,46 +24,65 @@ BEGIN {
 sub register {
     my ($self, $io, $options, $procedure) = @_;
 
-    my $realm = $self->_get_realm_for_io($io);
-
-    if ( $self->{'_realm_procedure'}{$realm}{$procedure} ) {
+    if ( $self->_procedure_is_in_state($io, $procedure) ) {
+        my $realm = $self->_get_realm_for_io($io);
         die "Already registered in “$realm”: “$procedure”";
     }
 
+    $self->{'_state'}->set_realm_property(
+        $io,
+        "procedure_io_$procedure",
+        $io,
+    );
+
+    #unused? See advanced
+    $self->{'_state'}->set_realm_property(
+        $io,
+        "procedure_options_$procedure",
+        $options,
+    );
+
     my $registration = Protocol::WAMP::Utils::generate_global_id();
 
-    $self->{'_realm_procedure'}{$realm}{$procedure} = {
-        io => $io,
-        options => $options,    #unused? See advanced
-        registration => $registration,
-    };
+    #CALL needs to look it up this way.
+    $self->{'_state'}->set_realm_property(
+        $io,
+        "procedure_registration_$procedure",
+        $registration,
+    );
 
-    $self->{'_realm_registration'}{$realm}{$registration} = $procedure;
-
-    $self->{'_io_store'}{$io}{'_to_delete'}{"$realm-reg-$registration"} = [
-        $self->{'_realm_registration'}{$realm}, $registration
-    ];
-
-    $self->{'_io_store'}{$io}{'_to_delete'}{"$realm-proc-$procedure"} = [
-        $self->{'_realm_procedure'}{$realm}, $procedure
-    ];
+    #UNREGISTER needs to look it up this way.
+    $self->{'_state'}->set_realm_property(
+        $io,
+        "registration_procedure_$registration",
+        $procedure,
+    );
 
     return $registration;
+}
+
+sub _procedure_is_in_state {
+    my ($self, $io, $procedure) = @_;
+
+    return !!$self->{'_state'}->get_realm_property($io, "procedure_registration_$procedure");
 }
 
 sub unregister {
     my ($self, $io, $registration) = @_;
 
-    my $realm = $self->_get_realm_for_io($io);
+    my $procedure = $self->{'_state'}->unset_realm_property("registration_procedure_$registration");
+    if (!defined $procedure) {
+        my $realm = $self->_get_realm_for_io($io);
+        die "No known procedure in “$realm” for registration “$registration”!";
+    }
 
-    my $procedure = delete $self->{'_realm_registration'}{$realm}{$registration} or do {
-        die "No known registration in “$realm” for “$registration”!";
-    };
-
-    delete $self->{'_realm_procedure'}{$realm}{$procedure};
-
-    delete $self->{'_io_store'}{$io}{'_to_delete'}{"$realm-reg-$registration"};
-    delete $self->{'_io_store'}{$io}{'_to_delete'}{"$realm-proc-$procedure"};
+    for my $k (
+        "procedure_io_$procedure",
+        "procedure_options_$procedure",
+        "procedure_registration_$procedure",
+    ) {
+        $self->{'_state'}->unset_realm_property( $io, $k );
+    }
 
     return;
 }
@@ -157,26 +176,40 @@ sub _receive_CALL {
         die "Need “Procedure”!";
     };
 
-    my $realm = $self->_get_realm_for_io($io);
+    my $target_io = $self->{'_state'}->get_realm_property(
+        $io,
+        "procedure_io_$procedure",
+    );
 
-    my $reg_hr = $self->{'_realm_procedure'}{$realm}{$procedure} or do {
-        die "Unknown RPC procedure “$procedure” in realm “$realm”!";
-    };
+    if (!$target_io) {
+        my $realm = $self->_get_realm_for_io($io);
+        die "Unknown procedure “$procedure” in realm “$realm”!";
+    }
 
-    my $target_io = $reg_hr->{'io'};
+    my $registration = $self->{'_state'}->get_realm_property(
+        $io,
+        "procedure_registration_$procedure",
+    );
 
     my $msg2 = $self->_send_INVOCATION(
         $target_io,
-        $reg_hr->{'registration'},
+        $registration,
         {}, #TODO: determine support
         $msg->get('Arguments'),
         $msg->get('ArgumentsKw'),
     );
 
-    $self->{'_io_store'}{$target_io}{'_invocation_call'}{ $msg2->get('Request') } = {
-        req_id => $msg->get('Request'),
-        io => $io,
-    };
+    $self->{'_state'}->set_io_property(
+        $target_io,
+        'invocation_call_req_id_' . $msg2->get('Request'),
+        $msg->get('Request'),
+    );
+
+    $self->{'_state'}->set_io_property(
+        $target_io,
+        'invocation_call_io_' . $msg2->get('Request'),
+        $io,
+    );
 
     return;
 }
@@ -198,13 +231,23 @@ sub _receive_YIELD {
 
     my $invoc_req_id = $msg->get('Request');
 
-    my $orig_call_hr = delete $self->{'_io_store'}{$io}{'_invocation_call'}{$invoc_req_id} or do {
+    my $orig_req_id = $self->{'_state'}->unset_io_property(
+        $io,
+        "invocation_call_req_id_$invoc_req_id",
+    );
+
+    if (!defined $orig_req_id) {
         die "Unrecognized YIELD request ID ($invoc_req_id)!"
-    };
+    }
+
+    my $orig_io = $self->{'_state'}->unset_io_property(
+        $io,
+        "invocation_call_io_$invoc_req_id",
+    );
 
     $self->_send_RESULT(
-        $orig_call_hr->{'io'},
-        $orig_call_hr->{'req_id'},
+        $orig_io,
+        $orig_req_id,
         {}, #TODO
         $msg->get('Arguments'),
         $msg->get('ArgumentsKw'),
