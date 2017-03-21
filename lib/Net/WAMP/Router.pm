@@ -86,27 +86,34 @@ sub _get_realm_for_io {
     return $self->{'_state'}->get_io_realm($io);
 }
 
+use constant _validate_HELLO => undef;
+
 sub _receive_HELLO {
     my ($self, $io, $msg) = @_;
 
-    if ($self->{'_state'}->io_exists($io)) {
-        die "$self already received HELLO from $io!";
-    }
-
-    #TODO: validate HELLO
-
-    $self->{'_state'}->add_io(
+    $self->_catch_pre_handshake_exception(
         $io,
-        $msg->get('Realm') || do {
-            die "Missing “Realm” in HELLO!";  #XXX
-        },
-    );
+        sub {
+            if ($self->{'_state'}->io_exists($io)) {
+                die "$self already received HELLO from $io!";
+            }
 
-    $self->{'_state'}->set_io_property(
-        $io,
-        'peer_roles',
-        $msg->get('Details')->{'roles'} || do {
-            die "Missing “Details.roles” in HELLO!";  #XXX
+            $self->_validate_HELLO($msg);
+
+            $self->{'_state'}->add_io(
+                $io,
+                $msg->get('Realm') || do {
+                    die "Missing “Realm” in HELLO!";  #XXX
+                },
+            );
+
+            $self->{'_state'}->set_io_property(
+                $io,
+                'peer_roles',
+                $msg->get('Details')->{'roles'} || do {
+                    die "Missing “Details.roles” in HELLO!";  #XXX
+                },
+            );
         },
     );
 
@@ -237,9 +244,35 @@ sub _catch_exception {
             $req_type,
             $req_id,
             {},
-            'net-wamp.error.exception',
+            'net-wamp.error',
             [ "$_" ],
         );
+    };
+
+    return $ret;
+}
+
+sub _catch_pre_handshake_exception {
+    my ($self, $io, $todo_cr) = @_;
+
+    my $ret;
+
+    try {
+        $ret = $todo_cr->();
+    }
+    catch {
+        $self->_create_and_send_msg(
+            $io,
+            'ABORT',
+            {
+                message => "$_",
+            },
+            'net-wamp.error',
+        );
+
+        if ($self->{'_state'}->io_exists($io)) {
+            $self->{'_state'}->remove_io($io);
+        }
     };
 
     return $ret;

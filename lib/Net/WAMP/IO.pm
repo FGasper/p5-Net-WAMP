@@ -48,14 +48,13 @@ print STDERR "$self GOT SESSION MESSAGE: $msg\n";
         my $ss_id = $msg->get( $msg->SESSION_SCOPE_ID_ELEMENT() );
 print "ID: [$ss_id]\n";
 
-        if ( $ss_id == 1 + $self->{'_last_session_scope_id'} ) {
+        if ( $ss_id != 1 + $self->{'_last_session_scope_id'} ) {
 
-            #increment by one
-            $self->get_next_session_scope_id();
+            #TODO - Wampy.js is probably not the only client that screws this up.
+            #die "Last-sent scope ID is “$self->{'_last_session_scope_id'}”; received “$ss_id”. (Should increment by 1!)";
         }
-        else {
-            die "Last-sent scope ID is “$self->{'_last_session_scope_id'}”; received “$ss_id”. (Should increment by 1!)";
-        }
+
+        $self->{'_last_session_scope_id'} = $ss_id;
     }
 
     return $msg;

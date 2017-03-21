@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Net::WAMP Demonstration</title>
+</head>
+
+<body>
+<style>
+.chat-window {
+    border: 1px solid #aaa;
+    border-radius: 2px;
+    overflow-y: scroll;
+    width: 400px;
+    height: 400px;
+}
+.chat-window .name {
+    color: blue;
+}
+</style>
+
+<div>
+    <label>Name: <input id="name_field"></label>
+</div>
+<div id="chat_window" class="chat-window"></div>
+
+<form action="javascript:void(0)" onsubmit="send(this)">
+    <input name="message" placeholder="Type a message …">
+</form>
+
+
+<script src="wampy/wampy.min.js"></script>
+<script>
+const PORT = 32000;
+
+const NAME_INPUT = document.getElementById('name_field');
+const CHAT_WINDOW = document.getElementById('chat_window');
+
+let WAMP = new Wampy( 'ws://localhost:' + PORT, { realm: "com.felipe.demo" } );
+
+WAMP.subscribe(
+    'com.felipe.demo.chat',
+    function( arr, hash ) {
+        let new_div = document.createElement('div');
+        new_div.innerHTML = "<span class='name'></span>: <span class='text'></span>";
+        new_div.children[0].textContent = arr[0];
+        new_div.children[1].textContent = arr[1];
+        CHAT_WINDOW.appendChild(new_div);
+    }
+);
+
+function send(the_form) {
+    let input = the_form.message;
+
+    let name = NAME_INPUT.value.trim() || "???";
+
+    let text = input.value.trim();
+
+    WAMP.publish(
+        'com.felipe.demo.chat',
+        [name, text],
+        null,
+        { exclude_me: false }
+    );
+
+    input.value = "";
+}
+</script>
+
+</body>
+
+</html>

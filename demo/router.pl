@@ -53,9 +53,7 @@ use Net::WAMP::IO::WebSocket::Server ();
 
 #TODO handle select exception events
 while (1) {
-print STDERR "SELECT\n";
     my ($rdrs_ar, undef, $errs_ar) = IO::Select->select( $select, undef, $select );
-print STDERR "got sel\n";
 
     #TODO: heartbeat
 
@@ -81,7 +79,10 @@ print STDERR "reading wamp\n";
                     $msg = $io->read_wamp_message();
                 }
                 catch {
-                    if ( try { $_->isa('Net::WAMP::X::EmptyRead') } ) {
+                    my $done = try { $_->isa('Net::WAMP::X::EmptyRead') };
+                    $done ||= try { $_->isa('Net::WebSocket::X::ReceivedClose') };
+
+                    if ($done) {
 print STDERR "EMPTY READ\n";
                         $router->forget_io($io);
                         $select->remove($fh);

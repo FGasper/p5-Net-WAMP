@@ -69,21 +69,25 @@ sub publish {
 
     my $publication = Protocol::WAMP::Utils::generate_global_id();
 
-    #Implements “Publisher Exclusion” feature
-    my $include_me = Types::Serialiser::is_false($options->{'exclude_me'});
-    $include_me &&= $self->{'_state'}->get_io_property($io, 'peer_roles')->{'publisher'}{'features'}{'publisher_exclusion'};
-    $include_me &&= Types::Serialiser::is_true($include_me);
+
 
     for my $rcp (values %$subscribers_hr) {
-        if ( $include_me || ($io ne $rcp->{'io'}) ) {
-            $self->_send_EVENT(
-                $rcp->{'io'},
-                $rcp->{'subscription'},
-                $publication,
-                {}, #TODO ???
-                ( $args_ar ? ( $args_ar, $args_hr || () ) : () ),
-            );
+
+        #Implements “Publisher Exclusion” feature
+        if ( $io eq $rcp->{'io'} ) {
+            next if !Types::Serialiser::is_false($options->{'exclude_me'});
+            my $exclusion = $self->{'_state'}->get_io_property($io, 'peer_roles')->{'publisher'}{'features'}{'publisher_exclusion'};
+            next if !Types::Serialiser::is_true($exclusion);
         }
+print STDERR "===SENDING TO $rcp->{'subscription'}\n";
+
+        $self->_send_EVENT(
+            $rcp->{'io'},
+            $rcp->{'subscription'},
+            $publication,
+            {}, #TODO ???
+            ( $args_ar ? ( $args_ar, $args_hr || () ) : () ),
+        );
     }
 
     return $publication;
