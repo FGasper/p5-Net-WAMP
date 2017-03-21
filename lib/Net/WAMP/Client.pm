@@ -114,8 +114,8 @@ sub handle_next_message {
     my ($handler_cr, $handler2_cr) = $self->_get_message_handlers($msg);
 
     my @extra_args = $handler_cr->( $self, $msg );
-use Data::Dumper;
-print STDERR Dumper( 'got', $msg, @extra_args, $handler2_cr );
+#use Data::Dumper;
+#print STDERR Dumper( 'got', $msg, @extra_args, $handler2_cr );
 
     #Check for external method definition
     if ($handler2_cr) {

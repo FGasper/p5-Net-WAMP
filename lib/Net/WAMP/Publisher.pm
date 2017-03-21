@@ -41,7 +41,7 @@ sub send_PUBLISH {
         @args,
     );
 
-    $self->{'_sent_PUBLISH'}{$req_id} = $msg;
+    $self->{'_sent_PUBLISH'}{$msg->get('Request')} = $msg;
 
     return $msg;
 }

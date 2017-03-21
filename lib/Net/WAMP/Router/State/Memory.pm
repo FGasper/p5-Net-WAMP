@@ -23,6 +23,16 @@ sub new {
 
 #----------------------------------------------------------------------
 
+#sub realm_property_exists {
+#    my ($self, $io, $property) = @_;
+#
+#    $self->_verify_known_io($io);
+#
+#    my $realm = $self->{'_io_realm'}{$io};
+#
+#    return exists($self->{'_realm_data'}{$realm}{$property}) ? 1 : 0;
+#}
+
 sub get_realm_property {
     my ($self, $io, $property) = @_;
 
@@ -92,7 +102,7 @@ sub io_exists {
 sub get_io_property {
     my ($self, $io, $key) = @_;
 
-    $self->_verify_known_io();
+    $self->_verify_known_io($io);
 
     return $self->{'_io_data'}{$io}{$key};
 }

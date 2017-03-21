@@ -26,7 +26,7 @@ sub send_SUBSCRIBE {
         $topic,
     );
 
-    $self->{'_sent_SUBSCRIBE'}{$req_id} = $msg;
+    $self->{'_sent_SUBSCRIBE'}{$msg->get('Request')} = $msg;
 
     return $msg;
 }
@@ -39,7 +39,7 @@ sub send_UNSUBSCRIBE {
         $subscription_id,
     );
 
-    $self->{'_sent_UNSUBSCRIBE'}{$req_id} = $msg;
+    $self->{'_sent_UNSUBSCRIBE'}{$msg->get('Request')} = $msg;
 
     return $msg;
 }
