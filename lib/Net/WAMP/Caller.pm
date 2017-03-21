@@ -25,15 +25,14 @@ BEGIN {
 sub send_CALL {
     my ($self, $opts_hr, $procedure, @args) = @_;
 
-    my $req_id = $self->_get_next_session_scope();
-
-    return $self->{'_sent_CALL'}{$req_id} = $self->_create_and_send_msg(
+    my $msg = $self->_create_and_send_session_msg(
         'CALL',
-        $req_id,
         $opts_hr,
         $procedure,
         @args,
     );
+
+    return $self->{'_sent_CALL'}{ $msg->get('Request') } = $msg;
 }
 
 sub _receive_RESULT {

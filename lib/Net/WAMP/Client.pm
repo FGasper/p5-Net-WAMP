@@ -192,6 +192,21 @@ sub _create_and_send_msg {
     return $msg;
 }
 
+sub _create_and_send_session_msg {
+    my ($self, $name, @parts) = @_;
+
+    #This is in Peer.pm
+    my $msg = $self->_create_msg(
+        $name,
+        $self->{'io'}->get_next_session_scope_id(),
+        @parts,
+    );
+
+    $self->_send_msg($msg);
+
+    return $msg;
+}
+
 sub _send_msg {
     my ($self, $msg) = @_;
 

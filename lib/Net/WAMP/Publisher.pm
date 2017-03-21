@@ -34,11 +34,8 @@ sub send_PUBLISH {
 
     #local $opts_hr->{'acknowledge'} = ${ *{$Types::Serialiser::{ $opts_hr->{'acknowledge'} ? 'true' : 'false' }}{'SCALAR'} } if exists $opts_hr->{'acknowledge'};
 
-    my $req_id = $self->_get_next_session_scope();
-
-    my $msg = $self->_create_and_send_msg(
+    my $msg = $self->_create_and_send_session_msg(
         'PUBLISH',
-        $req_id,
         $opts_hr,
         $topic,
         @args,

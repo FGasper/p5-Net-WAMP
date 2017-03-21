@@ -7,16 +7,20 @@ use parent 'Net::WAMP::IO';
 
 use Module::Load ();
 
+use Net::WAMP::X ();
+
 sub new {
     my ($class, $in_fh, $out_fh) = @_;
 
-    my $self = {
-        _in_fh => $in_fh,
-        _out_fh => $out_fh,
-        _message_type => undef,
-    };
+    my $self = $class->SUPER::new();
 
-    return bless $self, $class;
+    @{$self}{ qw( _in_fh  _out_fh  _message_type ) } = (
+        $in_fh,
+        $out_fh,
+        undef,
+    );
+
+    return $self;
 }
 
 sub _verify_handshake_not_done {
@@ -68,20 +72,28 @@ sub _serialized_wamp_to_transport_bytes {
     return $ws_msg->to_bytes();
 }
 
+my $_last_err;
+
 sub _read_transport_message {
     my ($self) = @_;
 
-    while (1) {
-#print STDERR (caller 0)[3] . " get_next_message\n";
-        my $msg = $self->{'_endpoint'}->get_next_message() or next;
-#use Data::Dumper;
-#$Data::Dumper::Useqq = 1;
-#print STDERR Dumper('READING', $msg);
+    $_last_err = $@;
 
-        return $msg->get_payload();
+    my $msg = eval { $self->{'_endpoint'}->get_next_message() };
+
+    if ($@) {
+        my $err = $@;
+        if ( eval { $err->isa('Net::WebSocket::X::EmptyRead') } ) {
+            die Net::WAMP::X->create('EmptyRead');
+        }
+
+        $@ = $err;
+        die;
     }
 
-    die "Should never get here";
+    $@ = $_last_err;
+
+    return $msg && $msg->get_payload();
 }
 
 1;

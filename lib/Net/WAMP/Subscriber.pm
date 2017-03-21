@@ -20,11 +20,8 @@ use constant {
 sub send_SUBSCRIBE {
     my ($self, $opts_hr, $topic) = @_;
 
-    my $req_id = $self->_get_next_session_scope();
-
-    my $msg = $self->_create_and_send_msg(
+    my $msg = $self->_create_and_send_session_msg(
         'SUBSCRIBE',
-        $req_id,
         $opts_hr,
         $topic,
     );
@@ -37,11 +34,8 @@ sub send_SUBSCRIBE {
 sub send_UNSUBSCRIBE {
     my ($self, $subscription_id) = @_;
 
-    my $req_id = $self->_get_next_session_scope();
-
-    my $msg = $self->_create_and_send_msg(
+    my $msg = $self->_create_and_send_session_msg(
         'UNSUBSCRIBE',
-        $req_id,
         $subscription_id,
     );
 

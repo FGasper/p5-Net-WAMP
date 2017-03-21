@@ -52,13 +52,16 @@ sub RPC_com_myapp_sum {
 
 package main;
 
+my $host_port = $ARGV[0] or die "Need [host:]port!";
+substr($host_port, 0, 0) = 'localhost:' if -1 == index($host_port, ':');
+
 use Carp::Always;
 
 use Net::WAMP::IO::WebSocket::Client ();
 
 use IO::Socket::INET ();
 #my $inet = IO::Socket::INET->new('demo.crossbar.io:80');
-my $inet = IO::Socket::INET->new('127.0.0.1:9090');
+my $inet = IO::Socket::INET->new($host_port);
 die "[$!][$@]" if !$inet;
 
 $inet->autoflush(1);

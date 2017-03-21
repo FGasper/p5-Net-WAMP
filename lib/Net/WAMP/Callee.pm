@@ -27,14 +27,13 @@ BEGIN {
 sub send_REGISTER {
     my ($self, $opts_hr, $uri) = @_;
 
-    my $req_id = $self->_get_next_session_scope();
-
-    return $self->{'_sent_REGISTER'}{$req_id} = $self->_create_and_send_msg(
+    my $msg = $self->_create_and_send_session_msg(
         'REGISTER',
-        $req_id,
         $opts_hr,
         $uri,
     );
+
+    return $self->{'_sent_REGISTER'}{$msg->get('Request')} = $msg;
 }
 
 sub _receive_REGISTERED {
@@ -60,6 +59,9 @@ sub _receive_INVOCATION {
 
     my $procedure = $self->{'_registrations'}{ $msg->get('Registration') };
 
+use Data::Dumper;
+print STDERR Dumper( (caller 0)[3], $msg );
+
     if (!length $procedure) {
         my $reg_id = $msg->get('Registration');
         die "Received INVOCATION for unknown (Registration=$reg_id)!"; #XXX
@@ -75,14 +77,13 @@ sub _receive_INVOCATION {
 sub send_UNREGISTER {
     my ($self, $opts_hr, $uri) = @_;
 
-    my $req_id = $self->_get_next_session_scope();
-
-    return $self->{'_sent_UNREGISTER'}{$req_id} = $self->_create_and_send_msg(
+    my $msg = $self->_create_and_send_session_msg(
         'UNREGISTER',
-        $req_id,
         $opts_hr,
         $uri,
     );
+
+    return $self->{'_sent_UNREGISTER'}{$msg->get('Request')} = $msg;
 }
 
 sub _receive_UNREGISTERED {

@@ -40,6 +40,14 @@ sub register {
 
     $self->{'_realm_registration'}{$realm}{$registration} = $procedure;
 
+    $self->{'_io_store'}{$io}{'_to_delete'}{"$realm-reg-$registration"} = [
+        $self->{'_realm_registration'}{$realm}, $registration
+    ];
+
+    $self->{'_io_store'}{$io}{'_to_delete'}{"$realm-proc-$procedure"} = [
+        $self->{'_realm_procedure'}{$realm}, $procedure
+    ];
+
     return $registration;
 }
 
@@ -52,7 +60,10 @@ sub unregister {
         die "No known registration in “$realm” for “$registration”!";
     };
 
-    delete $self->{'_realm_registration'}{$realm}{$registration};
+    delete $self->{'_realm_procedure'}{$realm}{$procedure};
+
+    delete $self->{'_io_store'}{$io}{'_to_delete'}{"$realm-reg-$registration"};
+    delete $self->{'_io_store'}{$io}{'_to_delete'}{"$realm-proc-$procedure"};
 
     return;
 }
@@ -77,6 +88,7 @@ sub _receive_REGISTER {
     my ($self, $io, $msg) = @_;
 
     return $self->_catch_exception(
+        $io,
         'REGISTER',
         $msg->get('Request'),
         sub {
@@ -109,6 +121,7 @@ sub _receive_UNREGISTER {
     my ($self, $io, $msg) = @_;
 
     return $self->_catch_exception(
+        $io,
         'UNREGISTER',
         $msg->get('Request'),
         sub {
@@ -160,7 +173,7 @@ sub _receive_CALL {
         $msg->get('ArgumentsKw'),
     );
 
-    $self->{'_invocation_call'}{$target_io}{ $msg2->get('Request') } = {
+    $self->{'_io_store'}{$target_io}{'_invocation_call'}{ $msg2->get('Request') } = {
         req_id => $msg->get('Request'),
         io => $io,
     };
@@ -171,12 +184,10 @@ sub _receive_CALL {
 sub _send_INVOCATION {
     my ($self, $io, $reg_id, $details, $args_ar, $args_hr) = @_;
 
-    my $req_id = $self->_get_next_session_scope();
-
-    return $self->_create_and_send_msg(
+    return $self->_create_and_send_session_msg(
         $io,
         'INVOCATION',
-        $req_id,
+        $reg_id,
         $details,
         ( $args_ar ? ( $args_ar, $args_hr || () ) : () ),
     );
@@ -187,7 +198,7 @@ sub _receive_YIELD {
 
     my $invoc_req_id = $msg->get('Request');
 
-    my $orig_call_hr = delete $self->{'_invocation_call'}{$io}{$invoc_req_id} or do {
+    my $orig_call_hr = delete $self->{'_io_store'}{$io}{'_invocation_call'}{$invoc_req_id} or do {
         die "Unrecognized YIELD request ID ($invoc_req_id)!"
     };
 

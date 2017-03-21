@@ -3,11 +3,14 @@ package Net::WAMP::Router;
 use strict;
 use warnings;
 
+use Try::Tiny;
+
 use parent qw(
     Net::WAMP::Peer
 );
 
 use lib '/Users/felipe/code/p5-Protocol-WAMP/lib';
+use Protocol::WAMP::Messages ();
 use Protocol::WAMP::Utils ();
 
 sub new {
@@ -18,19 +21,33 @@ sub route_message {
     my ($self, $msg, $io) = @_;
 
     my ($handler_cr, $handler2_cr) = $self->_get_message_handlers($msg);
-
-    my @extra_args = $handler_cr->( $self, $msg, $io );
 use Data::Dumper;
-print STDERR Dumper( 'got', $msg, @extra_args, $handler2_cr );
+print STDERR Dumper( (caller 0)[3], $msg );
+
+    my @extra_args = $handler_cr->( $self, $io, $msg );
 
     #Check for external method definition
     if ($handler2_cr) {
 $Data::Dumper::Deparse = 1;
 print STDERR Dumper $handler2_cr;
-        $handler2_cr->( $self, $msg, $io, @extra_args );
+        $handler2_cr->( $self, $io, $msg, @extra_args );
     }
 
     return $msg;
+}
+
+sub remove_from_io_store {
+    my ($self, $io) = @_;
+
+#use Data::Dumper;
+#print STDERR Dumper( "REMOVE", $self->{'_io_store'}{$io} );
+    for my $hr_key ( values %{ $self->{'_io_store'}{$io}{'_to_delete'} } ) {
+        delete $hr_key->[0]{ $hr_key->[1] };
+    }
+
+    delete $self->{'_io_store'}{$io};
+
+    return;
 }
 
 sub send_GOODBYE {
@@ -59,7 +76,7 @@ sub GET_DETAILS_HR {
 #----------------------------------------------------------------------
 
 sub _receive_HELLO {
-    my ($self, $msg, $io) = @_;
+    my ($self, $io, $msg) = @_;
 
     my $details_hr = $self->GET_DETAILS_HR();
 
@@ -102,7 +119,7 @@ print STDERR "SENDING WELCOME\n";
 }
 
 sub _receive_GOODBYE {
-    my ($self, $msg, $io) = @_;
+    my ($self, $io, $msg) = @_;
 
     delete $self->{'_io_session'}{$io} or do {
         die "Got GOODBYE without a registered session!";
@@ -147,6 +164,21 @@ sub _create_and_send_msg {
     return $msg;
 }
 
+sub _create_and_send_session_msg {
+    my ($self, $io, $name, @parts) = @_;
+
+    #This is in Peer.pm
+    my $msg = $self->_create_msg(
+        $name,
+        $io->get_next_session_scope_id(),
+        @parts,
+    );
+
+    $self->_send_msg($io, $msg);
+
+    return $msg;
+}
+
 sub _send_msg {
     my ($self, $io, $msg) = @_;
 
@@ -163,6 +195,41 @@ sub _send_msg {
     $io->write_wamp_message($msg);
 
     return $self;
+}
+
+#----------------------------------------------------------------------
+
+sub _create_and_send_ERROR {
+    my ($self, $io, $subtype, @args) = @_;
+
+    return $self->_create_and_send_msg(
+        $io,
+        'ERROR',
+        Protocol::WAMP::Messages::get_type_number($subtype),
+        @args,
+    );
+}
+
+sub _catch_exception {
+    my ($self, $io, $req_type, $req_id, $todo_cr) = @_;
+
+    my $ret;
+
+    try {
+        $ret = $todo_cr->();
+    }
+    catch {
+        $self->_create_and_send_ERROR(
+            $io,
+            $req_type,
+            $req_id,
+            {},
+            'net-wamp.error.exception',
+            [ "$_" ],
+        );
+    };
+
+    return $ret;
 }
 
 #----------------------------------------------------------------------

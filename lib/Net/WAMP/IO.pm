@@ -9,15 +9,22 @@ use Protocol::WAMP::Messages ();
 
 use constant SUBPROTOCOL_BASE => 'wamp.2.';
 
+sub new {
+    my ($class) = @_;
+
+    return bless { _last_session_scope_id => 0 }, $class;
+}
+
 sub write_wamp_message {
     my ($self, $wamp_msg) = @_;
+print "$self sending $wamp_msg\n";
 
     my $wamp_bytes = $self->_stringify( $wamp_msg->to_unblessed() );
 
 use Data::Dumper;
 print STDERR Dumper('WRITING', $wamp_bytes);
 
-    print { $self->{'_out_fh'} } $self->_serialized_wamp_to_transport_bytes($wamp_bytes);
+    syswrite( $self->{'_out_fh'}, $self->_serialized_wamp_to_transport_bytes($wamp_bytes) );
 
     return;
 }
@@ -34,8 +41,33 @@ sub read_wamp_message {
     my $type_num = shift(@$array_ref);
     my $type = Protocol::WAMP::Messages::get_type($type_num);
 
-    return $self->_create_msg( $type, @$array_ref );
+    my $msg = $self->_create_msg( $type, @$array_ref );
+
+    if ($msg->isa('Protocol::WAMP::SessionMessage')) {
+print STDERR "$self GOT SESSION MESSAGE: $msg\n";
+        my $ss_id = $msg->get( $msg->SESSION_SCOPE_ID_ELEMENT() );
+print "ID: [$ss_id]\n";
+
+        if ( $ss_id == 1 + $self->{'_last_session_scope_id'} ) {
+
+            #increment by one
+            $self->get_next_session_scope_id();
+        }
+        else {
+            die "Last-sent scope ID is “$self->{'_last_session_scope_id'}”; received “$ss_id”. (Should increment by 1!)";
+        }
+    }
+
+    return $msg;
 }
+
+sub get_next_session_scope_id {
+    my ($self) = @_;
+
+    return ++$self->{'_last_session_scope_id'};
+}
+
+#----------------------------------------------------------------------
 
 #XXX De-duplicate TODO
 sub _create_msg {

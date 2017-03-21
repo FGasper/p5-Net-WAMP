@@ -18,6 +18,8 @@ use strict;
 use warnings;
 use autodie;
 
+use Try::Tiny;
+
 my ($ip, $port);
 
 if ( my $ip_port = $ARGV[0] ) {
@@ -34,8 +36,9 @@ my $server = IO::Socket::INET->new(
     Listen => 5,
     ReuseAddr => 1,
 );
+die "server: [$@][$!]" if !$server;
 
-$server->blocking(0);
+#$server->blocking(0);
 
 printf STDERR "server fd: %d\n", fileno($server);
 
@@ -49,9 +52,16 @@ my $router = MyRouter->new();
 use Net::WAMP::IO::WebSocket::Server ();
 
 #TODO handle select exception events
-while (my @ready = $select->can_read()) {
-    for my $fh (@ready) {
+while (1) {
+print STDERR "SELECT\n";
+    my ($rdrs_ar, undef, $errs_ar) = IO::Select->select( $select, undef, $select );
+print STDERR "got sel\n";
+
+    #TODO: heartbeat
+
+    for my $fh (@$rdrs_ar) {
         if ($fh == $server) {
+printf STDERR "accepting\n";
             accept( my $connection, $server );
 printf STDERR "connection fd: %d\n", fileno($connection);
 
@@ -63,8 +73,28 @@ printf STDERR "connection fd: %d\n", fileno($connection);
 
         #A successful WS connection creates an IO object.
         elsif (my $io = $fd_io{fileno $fh}) {
+printf STDERR "reading fd %d\n", fileno $fh;
             if ($io->did_handshake()) {
-                if (my $msg = $io->read_wamp_message()) {
+print STDERR "reading wamp\n";
+                my $msg;
+                try {
+                    $msg = $io->read_wamp_message();
+                }
+                catch {
+                    if ( try { $_->isa('Net::WAMP::X::EmptyRead') } ) {
+print STDERR "EMPTY READ\n";
+                        $router->remove_from_io_store($io);
+                        $select->remove($fh);
+                        delete $fd_io{fileno $fh};
+                        close $fh;
+                    }
+                    else {
+                        local $@ = $_;
+                        die;
+                    }
+                };
+
+                if ($msg) {
                     $router->route_message($msg, $io);
                 }
             }
@@ -77,6 +107,12 @@ printf STDERR "connection fd: %d\n", fileno($connection);
         else {
             die sprintf("Unknown read ($fh, fd %d)\n", fileno $fh);
         }
+    }
+
+    for my $fh ( @$errs_ar ) {
+        printf STDERR "FD %d error!\n", fileno($fh);
+        $select->remove($fh);
+        close $fh;
     }
 }
 
