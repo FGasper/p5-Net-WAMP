@@ -33,6 +33,7 @@ sub handshake {
 printf "read from fd %d\n", fileno( $self->{'_in_fh'} );
 use Carp::Always;
     sysread( $self->{'_in_fh'}, $buf, 32768, length $buf );
+print "did read\n";
 
     my $hdrs_end_idx = index($buf, CRLF . CRLF);
 

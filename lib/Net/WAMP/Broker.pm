@@ -25,17 +25,17 @@ sub subscribe {
 
     my $subscription = Protocol::WAMP::Utils::generate_global_id();
 
-    $subscribers_hr->{$io} = {
-        io => $io,
-        options => $options,
-        subscription => $subscription,
-    };
-
-    #Unnecessary for the Memory-type State object if there are already
-    #topic subscribers, but no harm, either.
-    $self->{'_state'}->set_realm_property(
-        $io, "subscribers_$topic", $subscribers_hr,
+    $self->{'_state'}->set_realm_deep_property(
+        $io,
+        [ "subscribers_$topic", $io ],
+        {
+            io => $io,
+            options => $options,
+            subscription => $subscription,
+        },
     );
+use Data::Dumper;
+print STDERR Dumper('SUBSCRIBED', $self->{'_state'}{'_realm_data'});
 
     $self->{'_state'}->set_realm_property( $io, "subscription_topic_$subscription", $topic );
 
@@ -44,19 +44,15 @@ sub subscribe {
 
 sub unsubscribe {
     my ($self, $io, $subscription) = @_;
+printf STDERR "~~~~~ UNSUBSCRIBING: [$io / $subscription]\n";
 
     my $topic = $self->{'_state'}->unset_realm_property($io, "subscription_topic_$subscription") or do {
         my $realm = $self->_get_realm_for_io($io);
         die "Realm “$realm” has no subscription for ID “$subscription”!";
     };
 
-    my $subscribers_hr = $self->_get_topic_subscribers_or_die($io, $topic);
-
-    delete $subscribers_hr->{$io};
-
-    #Unnecessary for the Memory-type State object, but no harm, either.
-    $self->{'_state'}->set_realm_property(
-        $io, "subscribers_$topic", $subscribers_hr,
+    $self->{'_state'}->unset_realm_deep_property(
+        $io, [ "subscribers_$topic", $io ],
     );
 
     return;
@@ -65,7 +61,9 @@ sub unsubscribe {
 sub publish {
     my ($self, $io, $options, $topic, $args_ar, $args_hr) = @_;
 
-    my $subscribers_hr = $self->_get_topic_subscribers_or_die($io, $topic);
+    my $subscribers_hr = $self->_get_topic_subscribers($io, $topic);
+my $realm = $self->_get_realm_for_io($io);
+printf STDERR "----- subscribers ($realm:$topic): %d\n", scalar keys %$subscribers_hr;
 
     my $publication = Protocol::WAMP::Utils::generate_global_id();
 
@@ -100,14 +98,14 @@ print STDERR "getting subscribers: $io - $topic\n";
     return $self->{'_state'}->get_realm_property($io, "subscribers_$topic");
 }
 
-sub _get_topic_subscribers_or_die {
-    my ($self, $io, $topic) = @_;
-
-    return $self->_get_topic_subscribers($io, $topic) || do {
-        my $realm = $self->_get_realm_for_io($io);
-        die "Realm “$realm” has no topic “$topic”!";
-    };
-}
+#sub _get_topic_subscribers_or_die {
+#    my ($self, $io, $topic) = @_;
+#
+#    return $self->_get_topic_subscribers($io, $topic) || do {
+#        my $realm = $self->_get_realm_for_io($io);
+#        die "Realm “$realm” has no topic “$topic”!";
+#    };
+#}
 
 #----------------------------------------------------------------------
 

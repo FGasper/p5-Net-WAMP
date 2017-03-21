@@ -33,14 +33,14 @@ sub route_message {
 
     my ($handler_cr, $handler2_cr) = $self->_get_message_handlers($msg);
 use Data::Dumper;
-print STDERR Dumper( (caller 0)[3], $msg );
+#print STDERR Dumper( (caller 0)[3], $msg );
 
     my @extra_args = $handler_cr->( $self, $io, $msg );
 
     #Check for external method definition
     if ($handler2_cr) {
 $Data::Dumper::Deparse = 1;
-print STDERR Dumper $handler2_cr;
+#print STDERR Dumper $handler2_cr;
         $handler2_cr->( $self, $io, $msg, @extra_args );
     }
 

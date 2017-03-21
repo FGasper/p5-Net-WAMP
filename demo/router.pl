@@ -71,7 +71,7 @@ printf STDERR "connection fd: %d\n", fileno($connection);
 
         #A successful WS connection creates an IO object.
         elsif (my $io = $fd_io{fileno $fh}) {
-printf STDERR "reading fd %d\n", fileno $fh;
+printf STDERR "////// reading fd %d ($io)\n", fileno $fh;
             if ($io->did_handshake()) {
 print STDERR "reading wamp\n";
                 my $msg;
@@ -83,8 +83,12 @@ print STDERR "reading wamp\n";
                     $done ||= try { $_->isa('Net::WebSocket::X::ReceivedClose') };
 
                     if ($done) {
-print STDERR "EMPTY READ\n";
+printf STDERR "////// REMOVING FD %d $io\n", fileno($fh);
+use Data::Dumper;
+#print STDERR Dumper $router->{'_state'};
                         $router->forget_io($io);
+print STDERR "=\n=\n=\n=\n=\n=\n=\n=\n";
+#print STDERR Dumper $router->{'_state'};
                         $select->remove($fh);
                         delete $fd_io{fileno $fh};
                         close $fh;
