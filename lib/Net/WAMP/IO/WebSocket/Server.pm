@@ -12,6 +12,7 @@ use Net::WebSocket::Endpoint::Server ();
 use Net::WebSocket::Mask ();
 use Net::WebSocket::Parser ();
 use Net::WebSocket::Handshake::Server ();
+use Net::WebSocket::X ();
 
 use constant CRLF => "\x0d\x0a";
 
@@ -30,9 +31,14 @@ sub handshake {
         $buf = q<>;
     }
 
+    local $!;
+
 printf "read from fd %d\n", fileno( $self->{'_in_fh'} );
 use Carp::Always;
-    sysread( $self->{'_in_fh'}, $buf, 32768, length $buf );
+    sysread( $self->{'_in_fh'}, $buf, 32768, length $buf ) or do {
+        die "read err: $!" if $! && !$!{'EINTR'}; #XXX
+        return;
+    };
 print "did read\n";
 
     my $hdrs_end_idx = index($buf, CRLF . CRLF);
@@ -63,18 +69,24 @@ print "did read\n";
             subprotocols => [ $self->SUBPROTOCOL_BASE() . $serialization ],
         );
 
-        syswrite( $self->{'_out_fh'}, $hshk->create_header_text() . CRLF );
+print "enqueuing handshake send\n";
+        $self->_enqueue_write(
+            $hshk->create_header_text() . CRLF,
+            sub {
+print "done sending handshake\n";
 
-        $self->{'_reader'} = Net::WebSocket::Parser->new( $self->{'_in_fh'}, $buf );
+                $self->{'_reader'} = Net::WebSocket::Parser->new( $self->{'_in_fh'}, $buf );
 
-        $self->_set_serialization_format($serialization);
+                $self->_set_serialization_format($serialization);
 
-        $self->{'_endpoint'} = Net::WebSocket::Endpoint::Server->new(
-            parser => $self->{'_reader'},
-            out => $self->{'_out_fh'},
+                $self->{'_endpoint'} = Net::WebSocket::Endpoint::Server->new(
+                    parser => $self->{'_reader'},
+                    out => $self->{'_out_fh'},
+                );
+
+                $self->_set_handshake_done();
+            },
         );
-
-        return $self->{'_handshake_done'} = 1;
     }
 
     return;

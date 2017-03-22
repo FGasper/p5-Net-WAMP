@@ -46,16 +46,31 @@ use IO::Select;
 my $select = IO::Select->new( $server );
 
 my %fd_io;
+my %io_fh;
 
 my $router = MyRouter->new();
 
-use Net::WAMP::IO::WebSocket::Server ();
+#use Net::WAMP::IO::WebSocket::Server ();
+use Net::WAMP::IO::CheckSocket ();
+
+my %fd_connection;
 
 #TODO handle select exception events
 while (1) {
-    my ($rdrs_ar, undef, $errs_ar) = IO::Select->select( $select, undef, $select );
+    my @to_write = grep { $_ && $fd_io{fileno $io_fh{$_}}->messages_to_write() } values %fd_io;
+    $_ = $io_fh{$_} for @to_write;
+
+    my $wselect = @to_write ? IO::Select->new(@to_write) : undef;
+
+print "SELECT\n";
+    my ($rdrs_ar, $wtrs_ar, $errs_ar) = IO::Select->select( $select, $wselect, $select );
+print "DONE SELECT\n";
 
     #TODO: heartbeat
+
+    for my $fh (@$wtrs_ar) {
+        $fd_io{ fileno $fh }->process_write_queue();
+    }
 
     for my $fh (@$rdrs_ar) {
         if ($fh == $server) {
@@ -66,7 +81,8 @@ printf STDERR "connection fd: %d\n", fileno($connection);
             $connection->blocking(0);
             $select->add($connection);
 
-            $fd_io{fileno $connection} = Net::WAMP::IO::WebSocket::Server->new( ($connection) x 2 );
+            $fd_io{fileno $connection} = undef;
+            $fd_connection{fileno $connection} = $connection;
         }
 
         #A successful WS connection creates an IO object.
@@ -91,6 +107,8 @@ print STDERR "=\n=\n=\n=\n=\n=\n=\n=\n";
 #print STDERR Dumper $router->{'_state'};
                         $select->remove($fh);
                         delete $fd_io{fileno $fh};
+                        delete $fd_connection{fileno $fh};
+                        delete $io_fh{$io};
                         close $fh;
                     }
                     else {
@@ -110,7 +128,22 @@ print STDERR "=\n=\n=\n=\n=\n=\n=\n=\n";
 
         #No IO object? Then something’s wrong!
         else {
-            die sprintf("Unknown read ($fh, fd %d)\n", fileno $fh);
+            #die sprintf("Unknown read ($fh, fd %d)\n", fileno $fh);
+
+            my $conn = $fd_connection{fileno $fh};
+
+            my $io;
+            if ( Net::WAMP::IO::CheckSocket::is_rawsocket($fh) ) {
+                Module::Load::load('Net::WAMP::IO::RawSocket::Server') if !Net::WAMP::IO::RawSocket::Server->can('new');
+                $io = Net::WAMP::IO::RawSocket::Server->new( ($conn) x 2 );
+            }
+            else {
+                Module::Load::load('Net::WAMP::IO::WebSocket::Server') if !Net::WAMP::IO::WebSocket::Server->can('new');
+                $io = Net::WAMP::IO::WebSocket::Server->new( ($conn) x 2 );
+            }
+
+            $fd_io{fileno $fh} = $io;
+            $io_fh{$io} = $fh;
         }
     }
 

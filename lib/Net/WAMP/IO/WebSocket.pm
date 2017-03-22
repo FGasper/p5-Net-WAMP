@@ -3,33 +3,14 @@ package Net::WAMP::IO::WebSocket;
 use strict;
 use warnings;
 
-use parent 'Net::WAMP::IO';
+use parent qw(
+    Net::WAMP::IO
+    Net::WAMP::IO::Base::Handshaker
+);
 
 use Module::Load ();
 
 use Net::WAMP::X ();
-
-sub new {
-    my ($class, $in_fh, $out_fh) = @_;
-
-    my $self = $class->SUPER::new();
-
-    @{$self}{ qw( _in_fh  _out_fh  _message_type ) } = (
-        $in_fh,
-        $out_fh,
-        undef,
-    );
-
-    return $self;
-}
-
-sub _verify_handshake_not_done {
-    my ($self) = @_;
-
-    die "Already did handshake!" if $self->{'_handshake_done'};
-
-    return;
-}
 
 sub _set_serialization_format {
     my ($self, @args) = @_;
@@ -79,7 +60,9 @@ sub _read_transport_message {
 
     $_last_err = $@;
 
+print "read endpoint\n";
     my $msg = eval { $self->{'_endpoint'}->get_next_message() };
+print "did read endpoint\n";
 
     if ($@) {
         my $err = $@;

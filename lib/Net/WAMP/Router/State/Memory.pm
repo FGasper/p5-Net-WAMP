@@ -70,6 +70,8 @@ sub unset_realm_property {
 }
 
 #----------------------------------------------------------------------
+# XXX These “deep” methods seem a real kludge … but better than
+# polymorphic?
 
 #sub get_realm_deep_property {
 #    my ($self, $io, $property) = @_;
@@ -93,14 +95,6 @@ sub _resolve_deep_property {
     $hr = ($hr->{shift @prop} ||= {}) while @prop;
 
     return ($hr, $final_key);
-}
-
-sub _check_io_and_get_realm {
-    my ($self, $io) = @_;
-
-    $self->_verify_known_io($io);
-
-    return $self->{'_io_realm'}{$io};
 }
 
 sub set_realm_deep_property {
@@ -196,9 +190,6 @@ sub unset_io_property {
 
 sub remove_io {
     my ($self, $io) = @_;
-print STDERR "REMOVING IO: [$io]\n";
-use Carp;
-print STDERR Carp::longmess();
 
     #$self->_verify_known_io($io);
 
@@ -211,6 +202,14 @@ print STDERR Carp::longmess();
 }
 
 #----------------------------------------------------------------------
+
+sub _check_io_and_get_realm {
+    my ($self, $io) = @_;
+
+    $self->_verify_known_io($io);
+
+    return $self->{'_io_realm'}{$io};
+}
 
 sub _verify_known_io {
     my ($self, $io) = @_;

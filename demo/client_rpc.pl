@@ -61,10 +61,11 @@ use Net::WAMP::IO::WebSocket::Client ();
 
 use IO::Socket::INET ();
 #my $inet = IO::Socket::INET->new('demo.crossbar.io:80');
-my $inet = IO::Socket::INET->new($host_port);
+my $inet = IO::Socket::INET->new(
+    PeerAddr => $host_port,
+    Blocking => 1,
+);
 die "[$!][$@]" if !$inet;
-
-$inet->autoflush(1);
 
 my $wio = Net::WAMP::IO::WebSocket::Client->new( $inet, $inet );
 

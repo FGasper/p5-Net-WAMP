@@ -35,12 +35,16 @@ sub handshake {
         q<>,
     );
 
+    local $!;
+
     print STDERR "hdr:\n$hdr_txt\n";
 
-    print { $self->{'_out_fh'} } "$hdr_txt\x0d\x0a";
+    syswrite( $self->{'_out_fh'}, "$hdr_txt\x0d\x0a" );
 
     #----------------------------------------------------------------------
     #XXX Cheat for now, and just assume that the headers we receive are valid.
+
+    my $was_blocking = $self->{'_in_fh'}->blocking(1);
 
     my $buf = q<>;
     while ($buf !~ s<\A.+\x0a\x0d?\x0a><>s) {
@@ -57,6 +61,9 @@ sub handshake {
             }
         }
     }
+
+    $self->{'_in_fh'}->blocking(0) if !$was_blocking;
+
     #----------------------------------------------------------------------
 
     $self->{'_reader'} = Net::WebSocket::Parser->new( $self->{'_in_fh'}, $buf );
@@ -69,6 +76,7 @@ sub handshake {
     );
 
     $self->{'_handshake_done'} = 1;
+print STDERR "done WebSocket handshake\n";
 
     return $self;
 }
