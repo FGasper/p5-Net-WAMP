@@ -14,21 +14,16 @@ use parent qw(
     Net::WAMP::Subscriber
 );
 
-use JSON;
-
-#sub on_EVENT {
-#    my ($self, $msg) = @_;
-#
-#    #print JSON::encode_json( $msg->to_unblessed() ), $/;
-#    print JSON::encode_json( $msg ), $/;
-#}
-
 #----------------------------------------------------------------------
 
 package main;
 
-my $host_port = $ARGV[0] or die "Need [host:]port!";
+my $host_port = shift(@ARGV) or die "Need [host:]port!";
 substr($host_port, 0, 0) = 'localhost:' if -1 == index($host_port, ':');
+
+if (@ARGV < 2) {
+    die "$0 [host:]port name message …\n";
+}
 
 use Carp::Always;
 
@@ -57,7 +52,7 @@ print STDERR "RECEIVED …\n";
 $client->send_PUBLISH(
     {},
     'com.felipe.demo.chat',
-    [ $0, join(' ', @ARGV[ 1 .. $#ARGV ]) ],
+    [ shift(@ARGV), "@ARGV" ],
 );
 
 #----------------------------------------------------------------------
