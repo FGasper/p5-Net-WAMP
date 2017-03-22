@@ -10,9 +10,17 @@ use Net::WAMP::IO::RawSocket::Constants ();
 sub is_rawsocket {
     my ($socket) = @_;
 
-    my $byte1 = recv( $socket, my $buf, 1, Socket::MSG_PEEK() );
+    local $!;
 
-    return ord($byte1) == Net::WAMP::IO::RawSocket::Constants::MAGIC_FIRST_OCTET();
+    my $buf;
+
+    my $ok = recv( $socket, $buf, 1, Socket::MSG_PEEK() );
+    if (!defined $ok) {
+        die "recv() error: $!" if $!; #XXX
+        die "Empty recv()!";
+    };
+
+    return ord($buf) == Net::WAMP::IO::RawSocket::Constants::MAGIC_FIRST_OCTET();
 }
 
 1;

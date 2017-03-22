@@ -21,24 +21,27 @@ sub handshake {
     #Breaking normal form in negative-if to have chronological order.
 
     #State A
+print STDERR "client hs-a\n";
     if (!$self->_serialization_is_set()) {
-        $self->{'_max_input_size'} = $opts{'max_message_length'} || $self->MAX_MESSAGE_LENGTH();
+print STDERR "client hs-b\n";
+        $self->{'_max_input_size'} = $opts{'max_message_length'} || Net::WAMP::IO::RawSocket::Constants::MAX_MESSAGE_LENGTH();
 
-        my $serialization = $opts{'serialization'} || $self->DEFAULT_SERIALIZATION();
+        my $serialization = $opts{'serialization'} || Net::WAMP::IO::RawSocket::Constants::DEFAULT_SERIALIZATION();
         $self->_set_serialization_format($serialization);
 
         my $max_len_code = Net::WAMP::IO::RawSocket::Constants::get_max_length_code($self->{'_max_input_size'});
 
         $self->{'_rs_serialization_code'} = Net::WAMP::IO::RawSocket::Constants::get_serialization_code($serialization);
 
-        $self->_enqueue_write(
+        $self->_write_bytes(
             pack(
                 'C*',
-                MAGIC_FIRST_OCTET(),
+                Net::WAMP::IO::RawSocket::Constants::MAGIC_FIRST_OCTET(),
                 ($max_len_code << 4) + $self->{'_rs_serialization_code'},
                 0, 0,   #reserved
             ),
             sub {
+print STDERR "IN CALLBACK\n";
                 $self->{'_sent_handshake'} = 1;
             },
         );
@@ -47,7 +50,8 @@ sub handshake {
     #States B and C end here
 
     #States D and E
-    elsif ($self->{'_sent_handshake'}) {
+    if ($self->{'_sent_handshake'}) {
+print STDERR "reading header\n";
         my ($octet2, $ser_name, $resp_serializer_code) = $self->_get_and_unpack_handshake_header();
 
         #States D and E exit here; only continue if got the full header.
@@ -62,7 +66,7 @@ sub handshake {
 
             #I wonder why the client and router have to use the same serializer??
             if ( $resp_serializer_code != $self->{'_rs_serialization_code'} ) {
-                die "Protocol error: response serializer ($resp_serializer_code) != sent ($serializer_code)\n";
+                die "Protocol error: response serializer ($resp_serializer_code) != sent ($self->{'_rs_serialization_code'})\n";
             }
 
             $self->_set_handshake_done();

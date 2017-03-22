@@ -38,14 +38,19 @@ sub write_wamp_message {
 #use Data::Dumper;
 #print STDERR Dumper('WRITING', $wamp_bytes);
 
-    my $write_func = $self->{'_write_func'};
-print "WRITE via [$write_func]\n";
-
-    $self->$write_func(
+    $self->_write_bytes(
         $self->_serialized_wamp_to_transport_bytes($wamp_bytes),
     );
 
     return;
+}
+
+sub _write_bytes {
+    my $self = shift;
+
+    my $write_func = $self->{'_write_func'};
+
+    return $self->$write_func(@_);
 }
 
 sub _write_now {
@@ -53,9 +58,14 @@ sub _write_now {
 
     local $!;
 
-    return syswrite( $self->{'_out_fh'}, $_[0] ) || do {
+printf STDERR "SENDING: [%v.02x]\n", $_[0];
+    my $wrote = syswrite( $self->{'_out_fh'}, $_[0] ) || do {
         die Net::WAMP::X->create('WriteError', OS_ERROR => $!) if $!;
     };
+
+    $_[1]->() if $_[1];
+
+    return $wrote;
 }
 
 sub read_wamp_message {
