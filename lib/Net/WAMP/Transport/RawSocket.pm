@@ -1,14 +1,14 @@
-package Net::WAMP::IO::RawSocket;
+package Net::WAMP::Transport::RawSocket;
 
 use strict;
 use warnings;
 
 use parent qw(
-    Net::WAMP::IO
-    Net::WAMP::IO::Base::Handshaker
+    Net::WAMP::Transport
+    Net::WAMP::Transport::Base::Handshaker
 );
 
-use Net::WAMP::IO::RawSocket::Constants ();
+use Net::WAMP::Transport::RawSocket::Constants ();
 use Net::WAMP::X ();
 
 sub new {
@@ -96,7 +96,7 @@ sub _read {
 sub _read_header {
     my ($self) = @_;
 
-    $self->_read(Net::WAMP::IO::RawSocket::Constants::HEADER_LENGTH()) and return;
+    $self->_read(Net::WAMP::Transport::RawSocket::Constants::HEADER_LENGTH()) and return;
 
     return substr( $self->{'_rbuf'}, 0, 4, q<> );
 }
@@ -112,15 +112,15 @@ sub _get_and_unpack_handshake_header {
         die sprintf("Unsupported feature (reserved = %v.02x)", $reserved);
     }
 
-    if ($octet1 ne Net::WAMP::IO::RawSocket::Constants::MAGIC_FIRST_OCTET()) {
+    if ($octet1 ne Net::WAMP::Transport::RawSocket::Constants::MAGIC_FIRST_OCTET()) {
         die "Invalid first octet ($octet1)!";
     }
 
 print STDERR "before _get_max_length_value\n";
-    $self->{'_max_output_size'} = Net::WAMP::IO::RawSocket::Constants::get_max_length_value($octet2 >> 4);
+    $self->{'_max_output_size'} = Net::WAMP::Transport::RawSocket::Constants::get_max_length_value($octet2 >> 4);
 
     my $recv_serializer_code = ($octet2 & 0xf);
-    my $ser_name = Net::WAMP::IO::RawSocket::Constants::get_serialization_name($recv_serializer_code);
+    my $ser_name = Net::WAMP::Transport::RawSocket::Constants::get_serialization_name($recv_serializer_code);
 
     return( $octet2, $ser_name, $recv_serializer_code );
 }

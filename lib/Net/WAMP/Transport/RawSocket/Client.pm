@@ -1,11 +1,11 @@
-package Net::WAMP::IO::RawSocket::Client;
+package Net::WAMP::Transport::RawSocket::Client;
 
 use strict;
 use warnings;
 
-use parent 'Net::WAMP::IO::RawSocket';
+use parent 'Net::WAMP::Transport::RawSocket';
 
-use Net::WAMP::IO::RawSocket::Constants ();
+use Net::WAMP::Transport::RawSocket::Constants ();
 use Net::WAMP::X ();
 
 sub handshake {
@@ -24,19 +24,19 @@ sub handshake {
 print STDERR "client hs-a\n";
     if (!$self->_serialization_is_set()) {
 print STDERR "client hs-b\n";
-        $self->{'_max_input_size'} = $opts{'max_message_length'} || Net::WAMP::IO::RawSocket::Constants::MAX_MESSAGE_LENGTH();
+        $self->{'_max_input_size'} = $opts{'max_message_length'} || Net::WAMP::Transport::RawSocket::Constants::MAX_MESSAGE_LENGTH();
 
-        my $serialization = $opts{'serialization'} || Net::WAMP::IO::RawSocket::Constants::DEFAULT_SERIALIZATION();
+        my $serialization = $opts{'serialization'} || Net::WAMP::Transport::RawSocket::Constants::DEFAULT_SERIALIZATION();
         $self->_set_serialization_format($serialization);
 
-        my $max_len_code = Net::WAMP::IO::RawSocket::Constants::get_max_length_code($self->{'_max_input_size'});
+        my $max_len_code = Net::WAMP::Transport::RawSocket::Constants::get_max_length_code($self->{'_max_input_size'});
 
-        $self->{'_rs_serialization_code'} = Net::WAMP::IO::RawSocket::Constants::get_serialization_code($serialization);
+        $self->{'_rs_serialization_code'} = Net::WAMP::Transport::RawSocket::Constants::get_serialization_code($serialization);
 
         $self->_write_bytes(
             pack(
                 'C*',
-                Net::WAMP::IO::RawSocket::Constants::MAGIC_FIRST_OCTET(),
+                Net::WAMP::Transport::RawSocket::Constants::MAGIC_FIRST_OCTET(),
                 ($max_len_code << 4) + $self->{'_rs_serialization_code'},
                 0, 0,   #reserved
             ),

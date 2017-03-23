@@ -1,4 +1,4 @@
-package Net::WAMP::IO::RawSocket::Constants;
+package Net::WAMP::Transport::RawSocket::Constants;
 
 use strict;
 use warnings;

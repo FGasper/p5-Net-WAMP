@@ -32,7 +32,7 @@ substr($host_port, 0, 0) = 'localhost:' if -1 == index($host_port, ':');
 
 use Carp::Always;
 
-use Net::WAMP::IO::WebSocket::Client ();
+use Net::WAMP::Transport::WebSocket::Client ();
 
 use IO::Socket::INET ();
 #my $inet = IO::Socket::INET->new('demo.crossbar.io:80');
@@ -41,7 +41,7 @@ die "[$!][$@]" if !$inet;
 
 $inet->autoflush(1);
 
-my $wio = Net::WAMP::IO::WebSocket::Client->new( $inet, $inet );
+my $wio = Net::WAMP::Transport::WebSocket::Client->new( $inet, $inet );
 
 $wio->handshake( 'wss://demo.crossbar.io/ws', 'json' );
 

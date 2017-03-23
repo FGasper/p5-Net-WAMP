@@ -1,9 +1,7 @@
-package Net::WAMP::IO;
+package Net::WAMP::Transport;
 
 use strict;
 use warnings;
-
-use lib '/Users/Felipe/code/p5-Protocol-WAMP/lib';
 
 use Protocol::WAMP::Messages ();
 

@@ -87,8 +87,8 @@ sub new {
 #    Module::Load::load($ser_mod) if !$ser_mod->can('stringify');
 #    $opts{'ser_mod'} = $ser_mod;
 
-    if (!$opts{'io'}->isa('Net::WAMP::IO')) {
-        die "“io” must be an instance of “Net::WAMP::IO”, not “$opts{'io'}”.";
+    if (!$opts{'io'}->isa('Net::WAMP::Transport')) {
+        die "“io” must be an instance of “Net::WAMP::Transport”, not “$opts{'io'}”.";
     }
 
     return bless \%opts, $class;

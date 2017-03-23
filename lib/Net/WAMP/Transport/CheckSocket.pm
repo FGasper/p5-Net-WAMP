@@ -1,11 +1,11 @@
-package Net::WAMP::IO::CheckSocket;
+package Net::WAMP::Transport::CheckSocket;
 
 use strict;
 use warnings;
 
 use Socket ();
 
-use Net::WAMP::IO::RawSocket::Constants ();
+use Net::WAMP::Transport::RawSocket::Constants ();
 
 sub is_rawsocket {
     my ($socket) = @_;
@@ -20,7 +20,7 @@ sub is_rawsocket {
         die "Empty recv()!";
     };
 
-    return ord($buf) == Net::WAMP::IO::RawSocket::Constants::MAGIC_FIRST_OCTET();
+    return ord($buf) == Net::WAMP::Transport::RawSocket::Constants::MAGIC_FIRST_OCTET();
 }
 
 1;

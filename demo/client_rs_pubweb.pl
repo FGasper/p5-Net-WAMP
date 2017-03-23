@@ -27,7 +27,7 @@ if (@ARGV < 2) {
 
 use Carp::Always;
 
-use Net::WAMP::IO::RawSocket::Client ();
+use Net::WAMP::Transport::RawSocket::Client ();
 
 use IO::Socket::INET ();
 #my $inet = IO::Socket::INET->new('demo.crossbar.io:80');
@@ -36,7 +36,7 @@ die "[$!][$@]" if !$inet;
 
 $inet->autoflush(1);
 
-my $wio = Net::WAMP::IO::RawSocket::Client->new( $inet, $inet );
+my $wio = Net::WAMP::Transport::RawSocket::Client->new( $inet, $inet );
 
 $wio->handshake();
 

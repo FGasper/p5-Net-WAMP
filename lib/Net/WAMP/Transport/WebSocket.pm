@@ -1,11 +1,11 @@
-package Net::WAMP::IO::WebSocket;
+package Net::WAMP::Transport::WebSocket;
 
 use strict;
 use warnings;
 
 use parent qw(
-    Net::WAMP::IO
-    Net::WAMP::IO::Base::Handshaker
+    Net::WAMP::Transport
+    Net::WAMP::Transport::Base::Handshaker
 );
 
 use Module::Load ();

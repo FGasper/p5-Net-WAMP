@@ -24,7 +24,7 @@ my ($ip, $port);
 
 if ( my $ip_port = $ARGV[0] ) {
 
-    ($ip, $port) = $ip_port =~ m<(.+:)?([0-9]+)>;
+    ($ip, $port) = $ip_port =~ m<(?:(.+):)?([0-9]+)>;
 }
 
 die "Need [ip:]port!" if !$port;
@@ -45,19 +45,19 @@ printf STDERR "server fd: %d\n", fileno($server);
 use IO::Select;
 my $select = IO::Select->new( $server );
 
-my %fd_io;
+my %fd_tpt;
 my %io_fh;
 
 my $router = MyRouter->new();
 
-#use Net::WAMP::IO::WebSocket::Server ();
-use Net::WAMP::IO::CheckSocket ();
+#use Net::WAMP::Transport::WebSocket::Server ();
+use Net::WAMP::Transport::CheckSocket ();
 
 my %fd_connection;
 
 #TODO handle select exception events
 while (1) {
-    my @to_write = grep { $_ && $fd_io{fileno $io_fh{$_}}->messages_to_write() } values %fd_io;
+    my @to_write = grep { $_ && $fd_tpt{fileno $io_fh{$_}}->messages_to_write() } values %fd_tpt;
     $_ = $io_fh{$_} for @to_write;
 
     my $wselect = @to_write ? IO::Select->new(@to_write) : undef;
@@ -69,7 +69,7 @@ print "DONE SELECT\n";
     #TODO: heartbeat
 
     for my $fh (@$wtrs_ar) {
-        $fd_io{ fileno $fh }->process_write_queue();
+        $fd_tpt{ fileno $fh }->process_write_queue();
     }
 
     for my $fh (@$rdrs_ar) {
@@ -81,12 +81,12 @@ printf STDERR "connection fd: %d\n", fileno($connection);
             $connection->blocking(0);
             $select->add($connection);
 
-            $fd_io{fileno $connection} = undef;
+            $fd_tpt{fileno $connection} = undef;
             $fd_connection{fileno $connection} = $connection;
         }
 
         #A successful WS connection creates an IO object.
-        elsif (my $io = $fd_io{fileno $fh}) {
+        elsif (my $io = $fd_tpt{fileno $fh}) {
 printf STDERR "////// reading fd %d ($io)\n", fileno $fh;
             if ($io->did_handshake()) {
 print STDERR "reading wamp\n";
@@ -102,11 +102,11 @@ print STDERR "reading wamp\n";
 printf STDERR "////// REMOVING FD %d $io\n", fileno($fh);
 use Data::Dumper;
 #print STDERR Dumper $router->{'_state'};
-                        $router->forget_io($io);
+                        $router->forget_tpt($io);
 print STDERR "=\n=\n=\n=\n=\n=\n=\n=\n";
 #print STDERR Dumper $router->{'_state'};
                         $select->remove($fh);
-                        delete $fd_io{fileno $fh};
+                        delete $fd_tpt{fileno $fh};
                         delete $fd_connection{fileno $fh};
                         delete $io_fh{$io};
                         close $fh;
@@ -133,16 +133,16 @@ print STDERR "=\n=\n=\n=\n=\n=\n=\n=\n";
             my $conn = $fd_connection{fileno $fh};
 
             my $io;
-            if ( Net::WAMP::IO::CheckSocket::is_rawsocket($fh) ) {
-                Module::Load::load('Net::WAMP::IO::RawSocket::Server') if !Net::WAMP::IO::RawSocket::Server->can('new');
-                $io = Net::WAMP::IO::RawSocket::Server->new( ($conn) x 2 );
+            if ( Net::WAMP::Transport::CheckSocket::is_rawsocket($fh) ) {
+                Module::Load::load('Net::WAMP::Transport::RawSocket::Server') if !Net::WAMP::Transport::RawSocket::Server->can('new');
+                $io = Net::WAMP::Transport::RawSocket::Server->new( ($conn) x 2 );
             }
             else {
-                Module::Load::load('Net::WAMP::IO::WebSocket::Server') if !Net::WAMP::IO::WebSocket::Server->can('new');
-                $io = Net::WAMP::IO::WebSocket::Server->new( ($conn) x 2 );
+                Module::Load::load('Net::WAMP::Transport::WebSocket::Server') if !Net::WAMP::Transport::WebSocket::Server->can('new');
+                $io = Net::WAMP::Transport::WebSocket::Server->new( ($conn) x 2 );
             }
 
-            $fd_io{fileno $fh} = $io;
+            $fd_tpt{fileno $fh} = $io;
             $io_fh{$io} = $fh;
         }
     }

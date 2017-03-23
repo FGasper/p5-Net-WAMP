@@ -47,7 +47,7 @@ sub unsubscribe {
 printf STDERR "~~~~~ UNSUBSCRIBING: [$io / $subscription]\n";
 
     my $topic = $self->{'_state'}->unset_realm_property($io, "subscription_topic_$subscription") or do {
-        my $realm = $self->_get_realm_for_io($io);
+        my $realm = $self->_get_realm_for_tpt($io);
         die "Realm “$realm” has no subscription for ID “$subscription”!";
     };
 
@@ -62,7 +62,7 @@ sub publish {
     my ($self, $io, $options, $topic, $args_ar, $args_hr) = @_;
 
     my $subscribers_hr = $self->_get_topic_subscribers($io, $topic);
-my $realm = $self->_get_realm_for_io($io);
+my $realm = $self->_get_realm_for_tpt($io);
 printf STDERR "----- subscribers ($realm:$topic): %d\n", scalar keys %$subscribers_hr;
 
     my $publication = Protocol::WAMP::Utils::generate_global_id();
@@ -74,7 +74,7 @@ printf STDERR "----- subscribers ($realm:$topic): %d\n", scalar keys %$subscribe
         #Implements “Publisher Exclusion” feature
         if ( $io eq $rcp->{'io'} ) {
             next if !Types::Serialiser::is_false($options->{'exclude_me'});
-            my $exclusion = $self->{'_state'}->get_io_property($io, 'peer_roles')->{'publisher'}{'features'}{'publisher_exclusion'};
+            my $exclusion = $self->{'_state'}->get_tpt_property($io, 'peer_roles')->{'publisher'}{'features'}{'publisher_exclusion'};
             next if !Types::Serialiser::is_true($exclusion);
         }
 print STDERR "===SENDING TO $rcp->{'subscription'}\n";
@@ -102,7 +102,7 @@ print STDERR "getting subscribers: $io - $topic\n";
 #    my ($self, $io, $topic) = @_;
 #
 #    return $self->_get_topic_subscribers($io, $topic) || do {
-#        my $realm = $self->_get_realm_for_io($io);
+#        my $realm = $self->_get_realm_for_tpt($io);
 #        die "Realm “$realm” has no topic “$topic”!";
 #    };
 #}

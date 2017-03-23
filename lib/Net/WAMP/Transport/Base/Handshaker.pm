@@ -1,4 +1,4 @@
-package Net::WAMP::IO::Base::Handshaker;
+package Net::WAMP::Transport::Base::Handshaker;
 
 use strict;
 use warnings;

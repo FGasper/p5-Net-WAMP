@@ -1,9 +1,9 @@
-package Net::WAMP::IO::WebSocket::Client;
+package Net::WAMP::Transport::WebSocket::Client;
 
 use strict;
 use warnings;
 
-use parent 'Net::WAMP::IO::WebSocket';
+use parent 'Net::WAMP::Transport::WebSocket';
 
 use lib '/Users/Felipe/code/p5-Net-WebSocket/lib';
 

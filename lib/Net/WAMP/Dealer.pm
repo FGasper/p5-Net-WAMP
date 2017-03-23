@@ -25,13 +25,13 @@ sub register {
     my ($self, $io, $options, $procedure) = @_;
 
     if ( $self->_procedure_is_in_state($io, $procedure) ) {
-        my $realm = $self->_get_realm_for_io($io);
+        my $realm = $self->_get_realm_for_tpt($io);
         die "Already registered in “$realm”: “$procedure”";
     }
 
     $self->{'_state'}->set_realm_property(
         $io,
-        "procedure_io_$procedure",
+        "procedure_tpt_$procedure",
         $io,
     );
 
@@ -72,12 +72,12 @@ sub unregister {
 
     my $procedure = $self->{'_state'}->unset_realm_property("registration_procedure_$registration");
     if (!defined $procedure) {
-        my $realm = $self->_get_realm_for_io($io);
+        my $realm = $self->_get_realm_for_tpt($io);
         die "No known procedure in “$realm” for registration “$registration”!";
     }
 
     for my $k (
-        "procedure_io_$procedure",
+        "procedure_tpt_$procedure",
         "procedure_options_$procedure",
         "procedure_registration_$procedure",
     ) {
@@ -87,10 +87,10 @@ sub unregister {
     return;
 }
 
-#sub _get_target_io_for_procedure {
-#    my ($self, $src_io, $procedure) = @_;
+#sub _get_target_tpt_for_procedure {
+#    my ($self, $src_tpt, $procedure) = @_;
 #
-#    my $realm = $self->_get_realm_for_io($src_io);
+#    my $realm = $self->_get_realm_for_tpt($src_tpt);
 #
 #    return $self->{'_realm_procedure'}{$realm}{$procedure}{'io'};
 #}
@@ -176,13 +176,13 @@ sub _receive_CALL {
         die "Need “Procedure”!";
     };
 
-    my $target_io = $self->{'_state'}->get_realm_property(
+    my $target_tpt = $self->{'_state'}->get_realm_property(
         $io,
-        "procedure_io_$procedure",
+        "procedure_tpt_$procedure",
     );
 
-    if (!$target_io) {
-        my $realm = $self->_get_realm_for_io($io);
+    if (!$target_tpt) {
+        my $realm = $self->_get_realm_for_tpt($io);
         die "Unknown procedure “$procedure” in realm “$realm”!";
     }
 
@@ -192,22 +192,22 @@ sub _receive_CALL {
     );
 
     my $msg2 = $self->_send_INVOCATION(
-        $target_io,
+        $target_tpt,
         $registration,
         {}, #TODO: determine support
         $msg->get('Arguments'),
         $msg->get('ArgumentsKw'),
     );
 
-    $self->{'_state'}->set_io_property(
-        $target_io,
+    $self->{'_state'}->set_tpt_property(
+        $target_tpt,
         'invocation_call_req_id_' . $msg2->get('Request'),
         $msg->get('Request'),
     );
 
-    $self->{'_state'}->set_io_property(
-        $target_io,
-        'invocation_call_io_' . $msg2->get('Request'),
+    $self->{'_state'}->set_tpt_property(
+        $target_tpt,
+        'invocation_call_tpt_' . $msg2->get('Request'),
         $io,
     );
 
@@ -231,7 +231,7 @@ sub _receive_YIELD {
 
     my $invoc_req_id = $msg->get('Request');
 
-    my $orig_req_id = $self->{'_state'}->unset_io_property(
+    my $orig_req_id = $self->{'_state'}->unset_tpt_property(
         $io,
         "invocation_call_req_id_$invoc_req_id",
     );
@@ -240,13 +240,13 @@ sub _receive_YIELD {
         die "Unrecognized YIELD request ID ($invoc_req_id)!"
     }
 
-    my $orig_io = $self->{'_state'}->unset_io_property(
+    my $orig_tpt = $self->{'_state'}->unset_tpt_property(
         $io,
-        "invocation_call_io_$invoc_req_id",
+        "invocation_call_tpt_$invoc_req_id",
     );
 
     $self->_send_RESULT(
-        $orig_io,
+        $orig_tpt,
         $orig_req_id,
         {}, #TODO
         $msg->get('Arguments'),

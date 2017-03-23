@@ -47,10 +47,10 @@ $Data::Dumper::Deparse = 1;
     return $msg;
 }
 
-sub forget_io {
+sub forget_tpt {
     my ($self, $io) = @_;
 
-    $self->{'_state'}->remove_io($io);
+    $self->{'_state'}->remove_tpt($io);
 
     return;
 }
@@ -80,10 +80,10 @@ sub GET_DETAILS_HR {
 
 #----------------------------------------------------------------------
 
-sub _get_realm_for_io {
+sub _get_realm_for_tpt {
     my ($self, $io) = @_;
 
-    return $self->{'_state'}->get_io_realm($io);
+    return $self->{'_state'}->get_tpt_realm($io);
 }
 
 use constant _validate_HELLO => undef;
@@ -100,14 +100,14 @@ sub _receive_HELLO {
 
             $self->_validate_HELLO($msg);
 
-            $self->{'_state'}->add_io(
+            $self->{'_state'}->add_tpt(
                 $io,
                 $msg->get('Realm') || do {
                     die "Missing “Realm” in HELLO!";  #XXX
                 },
             );
 
-            $self->{'_state'}->set_io_property(
+            $self->{'_state'}->set_tpt_property(
                 $io,
                 'peer_roles',
                 $msg->get('Details')->{'roles'} || do {
@@ -119,7 +119,7 @@ sub _receive_HELLO {
 
     my $session_id = Protocol::WAMP::Utils::generate_global_id();
 
-    $self->{'_state'}->set_io_property(
+    $self->{'_state'}->set_tpt_property(
         $io,
         'session_id',
         $session_id,
@@ -147,13 +147,13 @@ print STDERR "SENDING WELCOME\n";
 sub _receive_GOODBYE {
     my ($self, $io, $msg) = @_;
 
-#    delete $self->{'_io_session'}{$io} or do {
+#    delete $self->{'_tpt_session'}{$io} or do {
 #        die "Got GOODBYE without a registered session!";
 #    };
 #
-#    delete $self->{'_io_realm'}{$io};
+#    delete $self->{'_tpt_realm'}{$io};
 
-    $self->{'_state'}->remove_io($io);
+    $self->{'_state'}->remove_tpt($io);
 
     if ($self->{'_sent_GOODBYE'}) {
         $self->{'_finished'} = 1;
@@ -202,12 +202,12 @@ sub _create_and_send_session_msg {
 sub _send_msg {
     my ($self, $io, $msg) = @_;
 
-    #if (!$self->{'_io_session'}{$io}) {
+    #if (!$self->{'_tpt_session'}{$io}) {
     #    die "Already finished!";    #XXX
     #}
 
     #cache
-    $self->{'_io_peer_groks_msg'}{$io}{$msg->get_type()} ||= do {
+    $self->{'_tpt_peer_groks_msg'}{$io}{$msg->get_type()} ||= do {
 #        $self->_verify_receiver_can_accept_msg_type($msg->get_type());
         1;
     };
@@ -271,7 +271,7 @@ sub _catch_pre_handshake_exception {
         );
 
         if ($self->{'_state'}->io_exists($io)) {
-            $self->{'_state'}->remove_io($io);
+            $self->{'_state'}->remove_tpt($io);
         }
     };
 
@@ -286,7 +286,7 @@ sub io_peer_is {
 
     $self->_verify_handshake();
 
-    return $self->{'_state'}->get_io_property($io, 'peer_roles')->{$role} ? 1 : 0;
+    return $self->{'_state'}->get_tpt_property($io, 'peer_roles')->{$role} ? 1 : 0;
 }
 
 sub io_peer_role_supports_boolean {
@@ -297,7 +297,7 @@ sub io_peer_role_supports_boolean {
 
     $self->_verify_handshake();
 
-    my $peer_roles = $self->{'_state'}->get_io_property($io, 'peer_roles');
+    my $peer_roles = $self->{'_state'}->get_tpt_property($io, 'peer_roles');
 
     if ( my $rolfeat = $peer_roles->{$role} ) {
         if ( my $features_hr = $rolfeat->{'features'} ) {
