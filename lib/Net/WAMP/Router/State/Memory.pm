@@ -2,14 +2,13 @@ package Net::WAMP::Router::State::Memory;
 
 #----------------------------------------------------------------------
 # The default setup involves storing all of the router state in memory
-# and depending on having a non-forking server.
+# and depending on a non-forking server.
 #
 # This abstraction should allow using an arbitrary storage backend
 # and should accommodate a forking server.
 #
-# It’ll be complicated by the pattern of storing I/O objects. It might
-# be worthwhile to play around with a forking server to see what’s what.
 # At the same time, what would the advantage of a forking server be?
+# Anyway, if nothing else it’s a nice abstraaction. So, here’s this.
 #----------------------------------------------------------------------
 
 use strict;
@@ -86,17 +85,6 @@ sub unset_realm_property {
 #    return $hr->{$key};
 #}
 
-sub _resolve_deep_property {
-    my ($hr, $prop_ar) = @_;
-
-    my @prop = @$prop_ar;
-
-    my $final_key = pop @prop;
-    $hr = ($hr->{shift @prop} ||= {}) while @prop;
-
-    return ($hr, $final_key);
-}
-
 sub set_realm_deep_property {
     my ($self, $tpt, $property, $value) = @_;
 
@@ -129,8 +117,19 @@ sub unset_realm_deep_property {
     return delete $hr->{$key};
 }
 
+sub _resolve_deep_property {
+    my ($hr, $prop_ar) = @_;
+
+    my @prop = @$prop_ar;
+
+    my $final_key = pop @prop;
+    $hr = ($hr->{shift @prop} ||= {}) while @prop;
+
+    return ($hr, $final_key);
+}
+
 #----------------------------------------------------------------------
-#io determines a realm, but not vice-versa
+#transport determines a realm, but not vice-versa
 
 sub add_transport {
     my ($self, $tpt, $realm) = @_;
@@ -144,9 +143,6 @@ sub add_transport {
 
     return $self;
 }
-
-#left: HASH(0x7fbaa20bce78)
-#right: HASH(0x7fbaa0a8d998)
 
 sub get_transport_realm {
     my ($self, $tpt) = @_;
@@ -191,6 +187,7 @@ sub unset_transport_property {
 sub forget_transport {
     my ($self, $tpt) = @_;
 
+    #Be willing to accept no-op forgets.
     #$self->_verify_known_tpt($tpt);
 
     my $realm = delete $self->{'_tpt_realm'}{$tpt};
