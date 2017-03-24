@@ -12,7 +12,7 @@ sub _create_and_send_ERROR {
 
     return $self->_create_and_send_msg(
         'ERROR',
-        Protocol::WAMP::Messages::get_type_number($subtype),
+        Net::WAMP::Messages::get_type_number($subtype),
         @args,
     );
 }

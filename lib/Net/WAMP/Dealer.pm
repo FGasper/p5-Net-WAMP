@@ -42,7 +42,7 @@ sub register {
         $options,
     );
 
-    my $registration = Protocol::WAMP::Utils::generate_global_id();
+    my $registration = Net::WAMP::Utils::generate_global_id();
 
     #CALL needs to look it up this way.
     $self->{'_state'}->set_realm_property(

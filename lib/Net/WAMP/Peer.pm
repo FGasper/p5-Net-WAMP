@@ -34,7 +34,7 @@ sub _verify_handshake {
 sub _create_msg {
     my ($self, $name, @parts) = @_;
 
-    my $mod = "Protocol::WAMP::Message::$name";
+    my $mod = "Net::WAMP::Message::$name";
     Module::Load::load($mod) if !$mod->can('new');
 
     return $mod->new(@parts);

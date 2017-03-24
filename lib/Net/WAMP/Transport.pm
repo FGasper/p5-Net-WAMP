@@ -3,7 +3,7 @@ package Net::WAMP::Transport;
 use strict;
 use warnings;
 
-use Protocol::WAMP::Messages ();
+use Net::WAMP::Messages ();
 
 use IO::Sys ();
 
@@ -57,11 +57,11 @@ sub read_wamp_message {
     );
 
     my $type_num = shift(@$array_ref);
-    my $type = Protocol::WAMP::Messages::get_type($type_num);
+    my $type = Net::WAMP::Messages::get_type($type_num);
 
     my $msg = $self->_create_msg( $type, @$array_ref );
 
-    if ($msg->isa('Protocol::WAMP::SessionMessage')) {
+    if ($msg->isa('Net::WAMP::SessionMessage')) {
         my $ss_id = $msg->get( $msg->SESSION_SCOPE_ID_ELEMENT() );
 
         if ( $ss_id != 1 + $self->{'_last_session_scope_id'} ) {
@@ -111,7 +111,7 @@ sub get_next_session_scope_id {
 sub _create_msg {
     my ($self, $name, @parts) = @_;
 
-    my $mod = "Protocol::WAMP::Message::$name";
+    my $mod = "Net::WAMP::Message::$name";
     Module::Load::load($mod) if !$mod->can('new');
 
     return $mod->new(@parts);
@@ -185,7 +185,7 @@ sub _enqueue_write {
 sub _set_serialization_format {
     my ($self, $serialization) = @_;
 
-    my $ser_mod = "Protocol::WAMP::Serialization::$serialization";
+    my $ser_mod = "Net::WAMP::Serialization::$serialization";
     Module::Load::load($ser_mod) if !$ser_mod->can('stringify');
     $self->{'_serialization_module'} = $ser_mod;
 

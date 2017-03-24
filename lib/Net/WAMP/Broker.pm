@@ -6,7 +6,7 @@ use warnings;
 use Types::Serialiser ();
 
 use Net::WAMP::Router::Features ();
-use Protocol::WAMP::Utils ();
+use Net::WAMP::Utils ();
 
 BEGIN {
     $Net::WAMP::Router::Features::FEATURES{'broker'}{'features'}{'publisher_exclusion'} = $Types::Serialiser::true;
@@ -23,7 +23,7 @@ sub subscribe {
         die "Already subscribed!";
     }
 
-    my $subscription = Protocol::WAMP::Utils::generate_global_id();
+    my $subscription = Net::WAMP::Utils::generate_global_id();
 
     $self->{'_state'}->set_realm_deep_property(
         $tpt,
@@ -60,7 +60,7 @@ sub publish {
 
     my $subscribers_hr = $self->_get_topic_subscribers($tpt, $topic);
 
-    my $publication = Protocol::WAMP::Utils::generate_global_id();
+    my $publication = Net::WAMP::Utils::generate_global_id();
 
     for my $rcp (values %$subscribers_hr) {
 

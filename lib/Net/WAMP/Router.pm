@@ -12,8 +12,8 @@ use parent qw(
 use Module::Load ();
 
 use lib '/Users/felipe/code/p5-Protocol-WAMP/lib';
-use Protocol::WAMP::Messages ();
-use Protocol::WAMP::Utils ();
+use Net::WAMP::Messages ();
+use Net::WAMP::Utils ();
 
 sub new {
     my ($class, $state_obj) = @_;
@@ -113,7 +113,7 @@ sub _receive_HELLO {
         },
     );
 
-    my $session_id = Protocol::WAMP::Utils::generate_global_id();
+    my $session_id = Net::WAMP::Utils::generate_global_id();
 
     $self->{'_state'}->set_transport_property(
         $tpt,
@@ -210,7 +210,7 @@ sub _create_and_send_ERROR {
     return $self->_create_and_send_msg(
         $tpt,
         'ERROR',
-        Protocol::WAMP::Messages::get_type_number($subtype),
+        Net::WAMP::Messages::get_type_number($subtype),
         @args,
     );
 }

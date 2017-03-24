@@ -3,7 +3,7 @@ package Net::WAMP::RPCWorker;
 use strict;
 use warnings;
 
-use Protocol::WAMP::Messages ();
+use Net::WAMP::Messages ();
 
 sub new {
     my ($class, $callee, $msg) = @_;
