@@ -1,5 +1,11 @@
 package Net::WAMP::Transport::RawSocket;
 
+#----------------------------------------------------------------------
+# This could be refactored into just a RawSocket module, and another
+# module to interface with Net::WAMP. But since RawSocket as WAMP defines
+# it is explicitly only for use in WAMP, there seems little point to that.
+#----------------------------------------------------------------------
+
 use strict;
 use warnings;
 
@@ -8,15 +14,28 @@ use parent qw(
     Net::WAMP::Transport::Base::Handshaker
 );
 
+use Net::WebSocket::PingStore ();
+
 use Net::WAMP::Transport::RawSocket::Constants ();
 use Net::WAMP::X ();
+
+use constant {
+    MSG_TYPE_REGULAR => 0,
+    MSG_TYPE_PING => 1,
+    MSG_TYPE_PONG => 2,
+
+    DEFAULT_MAX_PINGS => 10,
+};
+
+use constant CONSTRUCTOR_OPTS => ('max_pings');
 
 sub new {
     my ($class, @args) = @_;
 
     my $self = $class->SUPER::new(@args);
 
-    @{$self}{ '_rbuf', '_max_output_size' } = q<>;
+    $self->{'_ping_store'} = Net::WebSocket::PingStore->new();
+    $self->{'_max_pings'} ||= DEFAULT_MAX_UNANSWERED_PINGS;
 
     return $self;
 }
@@ -28,8 +47,6 @@ sub max_output_size {
 }
 
 sub _serialized_wamp_to_transport_bytes {
-use Data::Dumper;
-print STDERR Dumper(@_);
     if (length($_[1]) > $_[0]{'_max_output_size'}) {
         die sprintf('Attempt to send %d-byte message to a WAMP RawSocket peer that only accepts up to %d bytes per message.', length($_[1]), $_[0]{'_max_output_length'});
     }
@@ -37,68 +54,97 @@ print STDERR Dumper(@_);
     return pack('N', length $_[1]) . $_[1];
 }
 
-use Carp::Always;
-my $msg_type_code;
+my ($msg_type_code, $msg_size);
 
 sub _read_transport_message {
     my ($self) = @_;
 
-    if ($self->{'_pending_bytes'}) {
-        $self->_read( $self->{'_pending_bytes'} ) and return;
-        $msg_type_code = delete $self->{'_pending_msg_type_code'};
+    if ($self->{'_msg_size'}) {
+        ($msg_type_code, $msg_size) = @{$self}{ '_msg_type_code', '_msg_size' };
     }
     else {
-        my $hdr = $self->_read_header() or return;
+        my $hdr = $self->_read_header();
+        return if !length $hdr;
 
-        if ( ($msg_type_code = ord(substr $hdr, 0, 1)) < 3) {
-            $self->_read( unpack 'N', $hdr ) and do {
-                $self->{'_pending_msg_type_code'} = $msg_type_code;
-                return;
-            };
+        my ($mt_code, $len1, $len2)) = unpack 'CCn', $hdr;
+
+        if ($mt_code > MSG_TYPE_PONG) {
+            die sprintf("Unparsable RawSocket header (unrecognized lead byte): %v.02x", $hdr);
         }
         else {
-            die sprintf("Unrecognized lead byte: %02x", $msg_type_code);
+            $msg_type_code = $mt_code;
+            $msg_size = ($len1 << 16) + $len2;
         }
     }
 
-    if ($msg_type_code == 0) {
-        return substr( $self->{'_rbuf'}, 0, length($self->{'_rbuf'}), q<> );
+    my $body = $self->_read($msg_size);
+
+    #I’m guessing that partial reads will be very rare, so not
+    #bothering to optimize for now.
+    if (!length $body) {
+        @{$self}{ '_msg_type_code', '_msg_size' } = (
+            $msg_type_code,
+            $msg_size,
+        );
+        return;
     }
-    elsif ($msg_type_code == 1) {   #ping
-        #TODO: send ping
+
+    if ($msg_type_code == MSG_TYPE_REGULAR) {
+        return $body;
     }
-    else {
-        #TODO: send pong
+    elsif ($msg_type_code == MSG_TYPE_PING) {
+        $self->_send_frame(MSG_TYPE_PONG, $body);
+    }
+    elsif ($msg_type_code == MSG_TYPE_PONG) {
+        $self->{'_ping_store'}->remove($body);
     }
 
     return;
 }
 
-sub _read {
-    my ($self, $bytes) = @_;
+sub check_heartbeat {
+    my ($self) = @_;
 
-    local $!;
-
-  READ: {
-        $bytes -= sysread( $self->{'_in_fh'}, $self->{'_rbuf'}, $bytes, length $self->{'_rbuf'} ) || do {
-            if ($!) {
-                redo if $!{'EINTR'};
-                die Net::WAMP::X->create('ReadError', OS_ERROR => $!);
-            }
-
-            die Net::WAMP::X->create('EmptyRead');
-        };
+    my $ping_counter = $self->{'_ping_store'}->get_count();
+    if ( $ping_counter == $self->{'_max_pings'} ) {
+        $self->_set_shutdown();
+        return 0;
     }
 
-    return $self->{'_pending_bytes'} = $bytes;
+    $self->_send_frame( MSG_TYPE_PING, $self->{'_ping_store'}->add() );
+
+    return 1;
+}
+
+sub shutdown {
+    my ($self) = @_;
+    $self->_set_shutdown();
+    return 1;
+}
+
+sub _send_frame {
+    my ($self, $type_code) = @_;    #$_[2] = body
+
+    substr(
+        $_[2],
+        0, 0,
+        pack(
+            'CCn',
+            $type_code,
+            (length($_[2]) >> 16),
+            (length($_[2]) & 0xffff),
+        ),
+    );
+
+    return $self->_write_bytes($_[2]);
 }
 
 sub _read_header {
     my ($self) = @_;
 
-    $self->_read(Net::WAMP::Transport::RawSocket::Constants::HEADER_LENGTH()) and return;
-
-    return substr( $self->{'_rbuf'}, 0, 4, q<> );
+    return $self->_read_now(
+        Net::WAMP::Transport::RawSocket::Constants::HEADER_LENGTH(),
+    );
 }
 
 sub _get_and_unpack_handshake_header {

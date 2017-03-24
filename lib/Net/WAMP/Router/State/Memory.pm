@@ -24,45 +24,45 @@ sub new {
 #----------------------------------------------------------------------
 
 #sub realm_property_exists {
-#    my ($self, $io, $property) = @_;
+#    my ($self, $tpt, $property) = @_;
 #
-#    $self->_verify_known_tpt($io);
+#    $self->_verify_known_tpt($tpt);
 #
-#    my $realm = $self->{'_tpt_realm'}{$io};
+#    my $realm = $self->{'_tpt_realm'}{$tpt};
 #
 #    return exists($self->{'_realm_data'}{$realm}{$property}) ? 1 : 0;
 #}
 
 sub get_realm_property {
-    my ($self, $io, $property) = @_;
+    my ($self, $tpt, $property) = @_;
 
-    $self->_verify_known_tpt($io);
+    $self->_verify_known_tpt($tpt);
 
-    my $realm = $self->{'_tpt_realm'}{$io};
+    my $realm = $self->{'_tpt_realm'}{$tpt};
 
     return $self->{'_realm_data'}{$realm}{$property};
 }
 
 sub set_realm_property {
-    my ($self, $io, $key, $value) = @_;
+    my ($self, $tpt, $key, $value) = @_;
 
-    $self->_verify_known_tpt($io);
+    $self->_verify_known_tpt($tpt);
 
-    my $realm = $self->{'_tpt_realm'}{$io};
+    my $realm = $self->{'_tpt_realm'}{$tpt};
 
     $self->{'_realm_data'}{$realm}{$key} = $value;
 
-    $self->_mark_for_removal_with_tpt( $io, $key );
+    $self->_mark_for_removal_with_tpt( $tpt, $key );
 
     return $self;
 }
 
 sub unset_realm_property {
-    my ($self, $io, $key) = @_;
+    my ($self, $tpt, $key) = @_;
 
-    $self->_verify_known_tpt($io);
+    $self->_verify_known_tpt($tpt);
 
-    my $realm = $self->{'_tpt_realm'}{$io};
+    my $realm = $self->{'_tpt_realm'}{$tpt};
 
     #We don’t un-mark for removal since it will make no difference.
 
@@ -74,9 +74,9 @@ sub unset_realm_property {
 # polymorphic?
 
 #sub get_realm_deep_property {
-#    my ($self, $io, $property) = @_;
+#    my ($self, $tpt, $property) = @_;
 #
-#    my $realm = $self->_check_tpt_and_get_realm($io);
+#    my $realm = $self->_check_tpt_and_get_realm($tpt);
 #
 #    my ($hr, $key) = _resolve_deep_property(
 #        $self->{'_realm_data'}{$realm},
@@ -98,9 +98,9 @@ sub _resolve_deep_property {
 }
 
 sub set_realm_deep_property {
-    my ($self, $io, $property, $value) = @_;
+    my ($self, $tpt, $property, $value) = @_;
 
-    my $realm = $self->_check_tpt_and_get_realm($io);
+    my $realm = $self->_check_tpt_and_get_realm($tpt);
 
     my ($hr, $key) = _resolve_deep_property(
         $self->{'_realm_data'}{$realm},
@@ -109,15 +109,15 @@ sub set_realm_deep_property {
 
     $hr->{$key} = $value;
 
-    $self->_mark_for_removal_with_tpt( $io, $property );
+    $self->_mark_for_removal_with_tpt( $tpt, $property );
 
     return $self;
 }
 
 sub unset_realm_deep_property {
-    my ($self, $io, $property) = @_;
+    my ($self, $tpt, $property) = @_;
 
-    my $realm = $self->_check_tpt_and_get_realm($io);
+    my $realm = $self->_check_tpt_and_get_realm($tpt);
 
     #We don’t un-mark for removal since it will make no difference.
 
@@ -132,15 +132,15 @@ sub unset_realm_deep_property {
 #----------------------------------------------------------------------
 #io determines a realm, but not vice-versa
 
-sub add_tpt {
-    my ($self, $io, $realm) = @_;
+sub add_transport {
+    my ($self, $tpt, $realm) = @_;
 
-    if ($self->{'_tpt_data'}{$io}) {
-        die "State $self already has IO $io!";
+    if ($self->{'_tpt_data'}{$tpt}) {
+        die "State $self already has IO $tpt!";
     }
 
-    $self->{'_tpt_data'}{$io} = {};
-    $self->{'_tpt_realm'}{$io} = $realm;
+    $self->{'_tpt_data'}{$tpt} = {};
+    $self->{'_tpt_realm'}{$tpt} = $realm;
 
     return $self;
 }
@@ -148,55 +148,55 @@ sub add_tpt {
 #left: HASH(0x7fbaa20bce78)
 #right: HASH(0x7fbaa0a8d998)
 
-sub get_tpt_realm {
-    my ($self, $io) = @_;
+sub get_transport_realm {
+    my ($self, $tpt) = @_;
 
-    $self->_verify_known_tpt($io);
+    $self->_verify_known_tpt($tpt);
 
-    return $self->{'_tpt_realm'}{$io};
+    return $self->{'_tpt_realm'}{$tpt};
 }
 
-sub io_exists {
-    my ($self, $io) = @_;
+sub transport_exists {
+    my ($self, $tpt) = @_;
 
-    return exists($self->{'_tpt_data'}{$io}) ? 1 : 0;
+    return exists($self->{'_tpt_data'}{$tpt}) ? 1 : 0;
 }
 
-sub get_tpt_property {
-    my ($self, $io, $key) = @_;
+sub get_transport_property {
+    my ($self, $tpt, $key) = @_;
 
-    $self->_verify_known_tpt($io);
+    $self->_verify_known_tpt($tpt);
 
-    return $self->{'_tpt_data'}{$io}{$key};
+    return $self->{'_tpt_data'}{$tpt}{$key};
 }
 
-sub set_tpt_property {
-    my ($self, $io, $key, $value) = @_;
+sub set_transport_property {
+    my ($self, $tpt, $key, $value) = @_;
 
-    $self->_verify_known_tpt($io);
+    $self->_verify_known_tpt($tpt);
 
-    $self->{'_tpt_data'}{$io}{$key} = $value;
+    $self->{'_tpt_data'}{$tpt}{$key} = $value;
 
     return $self;
 }
 
-sub unset_tpt_property {
-    my ($self, $io, $key) = @_;
+sub unset_transport_property {
+    my ($self, $tpt, $key) = @_;
 
-    $self->_verify_known_tpt($io);
+    $self->_verify_known_tpt($tpt);
 
-    return delete $self->{'_tpt_data'}{$io}{$key};
+    return delete $self->{'_tpt_data'}{$tpt}{$key};
 }
 
-sub remove_tpt {
-    my ($self, $io) = @_;
+sub forget_transport {
+    my ($self, $tpt) = @_;
 
-    #$self->_verify_known_tpt($io);
+    #$self->_verify_known_tpt($tpt);
 
-    my $realm = delete $self->{'_tpt_realm'}{$io};
-    delete $self->{'_tpt_data'}{$io};
+    my $realm = delete $self->{'_tpt_realm'}{$tpt};
+    delete $self->{'_tpt_data'}{$tpt};
 
-    $self->_do_removal_with_tpt($io, $realm);
+    $self->_do_removal_with_tpt($tpt, $realm);
 
     return $self;
 }
@@ -204,35 +204,35 @@ sub remove_tpt {
 #----------------------------------------------------------------------
 
 sub _check_tpt_and_get_realm {
-    my ($self, $io) = @_;
+    my ($self, $tpt) = @_;
 
-    $self->_verify_known_tpt($io);
+    $self->_verify_known_tpt($tpt);
 
-    return $self->{'_tpt_realm'}{$io};
+    return $self->{'_tpt_realm'}{$tpt};
 }
 
 sub _verify_known_tpt {
-    my ($self, $io) = @_;
+    my ($self, $tpt) = @_;
 
-    if (!$self->{'_tpt_data'}{$io}) {
-        die "IO object $io isn’t in state $self!";
+    if (!$self->{'_tpt_data'}{$tpt}) {
+        die "IO object $tpt isn’t in state $self!";
     }
 
     return;
 }
 
 sub _mark_for_removal_with_tpt {
-    my ($self, $io, $to_remv) = @_;
+    my ($self, $tpt, $to_remv) = @_;
 
-    push @{ $self->{'_remove_with_tpt'}{$io} }, $to_remv;
+    push @{ $self->{'_remove_with_tpt'}{$tpt} }, $to_remv;
 
     return $self;
 }
 
 sub _do_removal_with_tpt {
-    my ($self, $io, $realm) = @_;
+    my ($self, $tpt, $realm) = @_;
 
-    if (my $remv_ar = delete $self->{'_remove_with_tpt'}{$io}) {
+    if (my $remv_ar = delete $self->{'_remove_with_tpt'}{$tpt}) {
         for my $remv (@$remv_ar) {
             if (ref $remv) {
                 my ($hr, $key) = _resolve_deep_property(

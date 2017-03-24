@@ -8,9 +8,58 @@ use parent qw(
     Net::WAMP::Transport::Base::Handshaker
 );
 
+use constant SUBPROTOCOL_BASE => 'wamp.2.';
+
 use Module::Load ();
 
 use Net::WAMP::X ();
+
+sub check_heartbeat {
+    my ($self) = @_;
+
+    if ($self->{'_endpoint'}) {
+        $self->{'_endpoint'}->check_heartbeat();
+
+        if ( $self->{'_endpoint'}->is_closed() ) {
+            $self->_set_shutdown();
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
+sub messages_to_write {
+    my ($self) = @_;
+
+    return(
+        ($self->{'_endpoint'} ? $self->{'_endpoint'}->get_write_queue_size() : 0)
+        + $self->SUPER::messages_to_write()
+    );
+}
+
+sub process_write_queue {
+    my ($self) = @_;
+
+    #Any WebSocket control frames needing to be sent?
+    if ($self->{'_endpoint'} && $self->{'_endpoint'}->get_write_queue_size()) {
+        return $self->{'_endpoint'}->process_write_queue();
+    }
+
+    return $self->SUPER::process_write_queue();
+}
+
+sub shutdown {
+    my ($self) = @_;
+
+    $self->{'_endpoint'}->shutdown();
+
+    $self->_set_shutdown();
+
+    return;
+}
+
+#----------------------------------------------------------------------
 
 sub _set_serialization_format {
     my ($self, @args) = @_;
@@ -60,9 +109,7 @@ sub _read_transport_message {
 
     $_last_err = $@;
 
-print "read endpoint\n";
     my $msg = eval { $self->{'_endpoint'}->get_next_message() };
-print "did read endpoint\n";
 
     if ($@) {
         my $err = $@;

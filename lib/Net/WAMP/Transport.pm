@@ -5,23 +5,27 @@ use warnings;
 
 use Protocol::WAMP::Messages ();
 
+use IO::Sys ();
+
 use Net::WAMP::X ();
 
-use constant SUBPROTOCOL_BASE => 'wamp.2.';
+use constant CONSTRUCTOR_OPTS => ();
 
 sub new {
-    my ($class, $in_fh, $out_fh) = @_;
+    my ($class, $in_fh, $out_fh, %opts) = @_;
 
     my $blocking_writes = $out_fh->blocking();
-print "blocking? [$blocking_writes]\n";
 
     my $self = {
         _in_fh => $in_fh,
         _out_fh => $out_fh,
         _last_session_scope_id => 0,
         _write_queue => [],
+        _read_buffer => q<>,
 
-        ( _write_func => $blocking_writes ? '_write_now' : '_enqueue_write' ),
+        ( map { ( "_$_" => $opts{$_} ) } $class->CONSTRUCTOR_OPTS() ),
+
+        _write_func => ( $blocking_writes ? '_write_now_then_callback' : '_enqueue_write' ),
     };
 
     return bless $self, $class;
@@ -29,12 +33,10 @@ print "blocking? [$blocking_writes]\n";
 
 sub write_wamp_message {
     my ($self, $wamp_msg) = @_;
-#print "$self sending $wamp_msg\n";
+
+    $self->_verify_not_shut_down();
 
     my $wamp_bytes = $self->_stringify( $wamp_msg->to_unblessed() );
-
-#use Data::Dumper;
-#print STDERR Dumper('WRITING', $wamp_bytes);
 
     $self->_write_bytes(
         $self->_serialized_wamp_to_transport_bytes($wamp_bytes),
@@ -43,32 +45,10 @@ sub write_wamp_message {
     return;
 }
 
-sub _write_bytes {
-    my $self = shift;
-
-    my $write_func = $self->{'_write_func'};
-
-    return $self->$write_func(@_);
-}
-
-sub _write_now {
-    my ($self) = shift;
-
-    local $!;
-
-printf STDERR "SENDING: [%v.02x]\n", $_[0];
-    my $wrote = syswrite( $self->{'_out_fh'}, $_[0] ) || do {
-        die Net::WAMP::X->create('WriteError', OS_ERROR => $!) if $!;
-    };
-
-    $_[1]->() if $_[1];
-
-    return $wrote;
-}
-
 sub read_wamp_message {
     my ($self) = @_;
-print STDERR "read_wamp\n";
+
+    $self->_verify_not_shut_down();
 
     my $array_ref = $self->_destringify(
 
@@ -82,13 +62,11 @@ print STDERR "read_wamp\n";
     my $msg = $self->_create_msg( $type, @$array_ref );
 
     if ($msg->isa('Protocol::WAMP::SessionMessage')) {
-print STDERR "$self GOT SESSION MESSAGE: $msg\n";
         my $ss_id = $msg->get( $msg->SESSION_SCOPE_ID_ELEMENT() );
-print "ID: [$ss_id]\n";
 
         if ( $ss_id != 1 + $self->{'_last_session_scope_id'} ) {
 
-            #TODO - Wampy.js is probably not the only client that screws this up.
+            #XXX TODO - Wampy.js is probably not the only client that screws this up.
             #die "Last-sent scope ID is “$self->{'_last_session_scope_id'}”; received “$ss_id”. (Should increment by 1!)";
         }
 
@@ -107,18 +85,13 @@ sub messages_to_write {
 sub process_write_queue {
     my ($self) = @_;
 
-    while ( my $qi = $self->{'_write_queue'}[0] ) {
-        my $written = $self->_write_now( $qi->[0] );
+    local $SIG{'PIPE'} = 'IGNORE' if $self->_is_shut_down();
 
-        if ($written == length $qi->[0]) {
-print "SENT $written bytes\n";
+    while ( my $qi = $self->{'_write_queue'}[0] ) {
+        if ( $self->_write_now_then_callback( @$qi ) ) {
             shift @{ $self->{'_write_queue'} };
-            if ($qi->[1]) {
-                $qi->[1]->();
-            }
         }
         else {
-            substr( $qi->[0], 0, length($written) ) = q<>;
             last;
         }
     }
@@ -145,6 +118,61 @@ sub _create_msg {
 }
 
 #----------------------------------------------------------------------
+
+sub _write_bytes {
+    my $self = shift;
+
+    my $write_func = $self->{'_write_func'};
+
+    return $self->$write_func(@_);
+}
+
+sub _write_now_then_callback {
+    my ($self) = shift;
+
+    local $!;
+
+    my $wrote = IO::Sys::write( $self->{'_out_fh'}, $_[0] ) || do {
+        die Net::WAMP::X->create('WriteError', OS_ERROR => $!) if $!;
+        return undef;
+    };
+
+    if ($wrote == length $_[0]) {
+        $_[1]->() if $_[1];
+        return 1;
+    }
+
+    substr( $_[0], 0, $wrote ) = q<>;
+
+    return 0;
+}
+
+#We assume here that whatever read may be incomplete at first
+#will eventually be repeated so that we can complete it. e.g.:
+#
+#   - read 4 bytes, receive 1, cache it - return q<>
+#   - select()
+#   - read 4 bytes again; since we already have 1 byte, only read 3
+#       … and now we get the remaining 3, so return the buffer.
+#
+sub _read_now {
+    my ($self, $bytes) = @_;
+
+    local $!;
+
+    $bytes -= IO::Sys::read( $self->{'_in_fh'}, $self->{'_read_buffer'}, $bytes - length $self->{'_read_buffer'}, length $self->{'_read_buffer'} ) || do {
+        die Net::WAMP::X->create('ReadError', OS_ERROR => $!) if $!;
+
+        die Net::WAMP::X->create('EmptyRead') if !$self->{'_in_fh'}->blocking();
+    };
+
+    return $bytes ? q<> : substr( $self->{'_read_buffer'}, 0, length $self->{'_read_buffer'}, q<> );
+}
+
+sub _read_buffer_sr {
+    my ($self) = @_;
+    return \$self->{'_read_buffer'};
+}
 
 sub _enqueue_write {
     my $self = shift;
@@ -177,8 +205,28 @@ sub _stringify {
 
 sub _destringify {
     my ($self) = shift;
-#print STDERR Dumper('got', @_);
     return $self->{'_serialization_module'}->can('parse')->(@_);
+}
+
+sub _set_shutdown {
+    shift()->{'_shutdown_happened'} = 1;
+    return;
+}
+
+sub _is_shut_down {
+    my ($self) = @_;
+
+    return $self->{'_shutdown_happened'} ? 1 : 0;
+}
+
+sub _verify_not_shut_down {
+    my ($self) = @_;
+
+    if ($self->{'_shutdown_happened'}) {
+        die "$self is already shut down!";
+    }
+
+    return;
 }
 
 1;

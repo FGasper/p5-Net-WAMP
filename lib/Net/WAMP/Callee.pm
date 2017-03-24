@@ -59,9 +59,6 @@ sub _receive_INVOCATION {
 
     my $procedure = $self->{'_registrations'}{ $msg->get('Registration') };
 
-use Data::Dumper;
-print STDERR Dumper( (caller 0)[3], $msg );
-
     if (!length $procedure) {
         my $reg_id = $msg->get('Registration');
         die "Received INVOCATION for unknown (Registration=$reg_id)!"; #XXX

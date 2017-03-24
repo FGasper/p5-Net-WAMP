@@ -81,41 +81,23 @@ sub _receive_GOODBYE {
 sub new {
     my ($class, %opts) = @_;
 
-#    my $ser = $opts{'serialization'} ||= 'JSON';
-#
-#    my $ser_mod = "Protocol::WAMP::Serialization::$ser";
-#    Module::Load::load($ser_mod) if !$ser_mod->can('stringify');
-#    $opts{'ser_mod'} = $ser_mod;
-
-    if (!$opts{'io'}->isa('Net::WAMP::Transport')) {
-        die "“io” must be an instance of “Net::WAMP::Transport”, not “$opts{'io'}”.";
+    if (!$opts{'transport'}->isa('Net::WAMP::Transport')) {
+        die "“transport” must be an instance of “Net::WAMP::Transport”, not “$opts{'tpt'}”.";
     }
+
+    $opts{'tpt'} = delete $opts{'transport'};
 
     return bless \%opts, $class;
 }
 
-#sub get_serialization_format {
-#    my ($self) = @_;
-#
-#    return $self->{'ser_mod'}->serialization();
-#}
-#
-#sub get_websocket_message_type {
-#    my ($self) = @_;
-#
-#    return $self->{'ser_mod'}->websocket_message_type();
-#}
-
 sub handle_next_message {
     my ($self) = @_;
 
-    my $msg = $self->{'io'}->read_wamp_message() or return;
+    my $msg = $self->{'tpt'}->read_wamp_message() or return;
 
     my ($handler_cr, $handler2_cr) = $self->_get_message_handlers($msg);
 
     my @extra_args = $handler_cr->( $self, $msg );
-#use Data::Dumper;
-#print STDERR Dumper( 'got', $msg, @extra_args, $handler2_cr );
 
     #Check for external method definition
     if ($handler2_cr) {
@@ -198,7 +180,7 @@ sub _create_and_send_session_msg {
     #This is in Peer.pm
     my $msg = $self->_create_msg(
         $name,
-        $self->{'io'}->get_next_session_scope_id(),
+        $self->{'tpt'}->get_next_session_scope_id(),
         @parts,
     );
 
@@ -220,7 +202,7 @@ sub _send_msg {
         1;
     };
 
-    $self->{'io'}->write_wamp_message($msg);
+    $self->{'tpt'}->write_wamp_message($msg);
 
     return $self;
 }

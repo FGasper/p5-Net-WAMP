@@ -71,7 +71,7 @@ my $wio = Net::WAMP::Transport::WebSocket::Client->new( $inet, $inet );
 
 $wio->handshake( 'wss://demo.crossbar.io/ws', 'json' );
 
-my $client = WAMP_Client->new( io => $wio );
+my $client = WAMP_Client->new( transport => $wio );
 
 $client->send_HELLO(
     'felipes_demo', #'myrealm',

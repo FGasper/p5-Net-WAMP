@@ -44,8 +44,6 @@ sub _receive_ABORT {
     my ($self, $msg) = @_;
 
     #die "$msg: " . $self->_stringify($msg);   #XXX
-    use Data::Dumper;
-    print STDERR Dumper($msg);
 
     return;
 }

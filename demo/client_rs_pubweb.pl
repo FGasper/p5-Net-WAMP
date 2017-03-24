@@ -40,7 +40,7 @@ my $wio = Net::WAMP::Transport::RawSocket::Client->new( $inet, $inet );
 
 $wio->handshake();
 
-my $client = WAMP_Client->new( io => $wio );
+my $client = WAMP_Client->new( transport => $wio );
 
 $client->send_HELLO( 'com.felipe.demo' );
 

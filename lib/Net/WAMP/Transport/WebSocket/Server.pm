@@ -25,29 +25,24 @@ sub handshake {
 
     $self->_verify_handshake_not_done();
 
-    my $buf = delete $self->{'_fd_handshake_buffer'};
+    my $was_blocking = $self->{'_in_fh'}->blocking(0);
 
-    if ( !defined $buf ) {
-        $buf = q<>;
-    }
+    #A sufficiently large read size that it should accommodate
+    #any WebSocket header set.
+print STDERR "reading\n";
+    $self->_read_now(65536);
+print STDERR "done _read_now\n";
 
-    local $!;
+    $self->{'_in_fh'}->blocking(1) if $was_blocking;
 
-printf "read from fd %d\n", fileno( $self->{'_in_fh'} );
-use Carp::Always;
-    sysread( $self->{'_in_fh'}, $buf, 32768, length $buf ) or do {
-        die "read err: $!" if $! && !$!{'EINTR'}; #XXX
-        return;
-    };
-print "did read\n";
+    my $buf_sr = $self->_read_buffer_sr();
 
-    my $hdrs_end_idx = index($buf, CRLF . CRLF);
+    my $hdrs_end_idx = index($$buf_sr, CRLF . CRLF);
+print STDERR "buf($hdrs_end_idx): [$$buf_sr]\n";
 
-    if (-1 eq $hdrs_end_idx ) {
-        $self->{'_fd_handshake_buffer'} = $buf;
-    }
-    else {
-        my $rqt = HTTP::Request->parse( substr( $buf, 0, 4 + $hdrs_end_idx, q<> ) );
+    if (-1 != $hdrs_end_idx) {
+print STDERR "can parse headesr\n";
+        my $rqt = HTTP::Request->parse( substr( $$buf_sr, 0, 4 + $hdrs_end_idx, q<> ) );
 
         #validate headers … TODO
 
@@ -69,13 +64,11 @@ print "did read\n";
             subprotocols => [ $self->SUBPROTOCOL_BASE() . $serialization ],
         );
 
-print "enqueuing handshake send\n";
-        $self->_enqueue_write(
+        $self->_write_bytes(
             $hshk->create_header_text() . CRLF,
             sub {
-print "done sending handshake\n";
 
-                $self->{'_reader'} = Net::WebSocket::Parser->new( $self->{'_in_fh'}, $buf );
+                $self->{'_reader'} = Net::WebSocket::Parser->new( $self->{'_in_fh'}, $$buf_sr );
 
                 $self->_set_serialization_format($serialization);
 

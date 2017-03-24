@@ -29,37 +29,33 @@ sub new {
 }
 
 sub route_message {
-    my ($self, $msg, $io) = @_;
+    my ($self, $msg, $tpt) = @_;
 
     my ($handler_cr, $handler2_cr) = $self->_get_message_handlers($msg);
-use Data::Dumper;
-#print STDERR Dumper( (caller 0)[3], $msg );
 
-    my @extra_args = $handler_cr->( $self, $io, $msg );
+    my @extra_args = $handler_cr->( $self, $tpt, $msg );
 
     #Check for external method definition
     if ($handler2_cr) {
-$Data::Dumper::Deparse = 1;
-#print STDERR Dumper $handler2_cr;
-        $handler2_cr->( $self, $io, $msg, @extra_args );
+        $handler2_cr->( $self, $tpt, $msg, @extra_args );
     }
 
     return $msg;
 }
 
-sub forget_tpt {
-    my ($self, $io) = @_;
+sub forget_transport {
+    my ($self, $tpt) = @_;
 
-    $self->{'_state'}->remove_tpt($io);
+    $self->{'_state'}->forget_transport($tpt);
 
     return;
 }
 
 sub send_GOODBYE {
-    my ($self, $io, $details, $reason) = @_;
+    my ($self, $tpt, $details, $reason) = @_;
 
     my $msg = $self->_create_and_send_msg(
-        $io,
+        $tpt,
         'GOODBYE',
         $details,
         $reason,
@@ -81,34 +77,34 @@ sub GET_DETAILS_HR {
 #----------------------------------------------------------------------
 
 sub _get_realm_for_tpt {
-    my ($self, $io) = @_;
+    my ($self, $tpt) = @_;
 
-    return $self->{'_state'}->get_tpt_realm($io);
+    return $self->{'_state'}->get_transport_realm($tpt);
 }
 
 use constant _validate_HELLO => undef;
 
 sub _receive_HELLO {
-    my ($self, $io, $msg) = @_;
+    my ($self, $tpt, $msg) = @_;
 
     $self->_catch_pre_handshake_exception(
-        $io,
+        $tpt,
         sub {
-            if ($self->{'_state'}->io_exists($io)) {
-                die "$self already received HELLO from $io!";
+            if ($self->{'_state'}->transport_exists($tpt)) {
+                die "$self already received HELLO from $tpt!";
             }
 
             $self->_validate_HELLO($msg);
 
-            $self->{'_state'}->add_tpt(
-                $io,
+            $self->{'_state'}->add_transport(
+                $tpt,
                 $msg->get('Realm') || do {
                     die "Missing “Realm” in HELLO!";  #XXX
                 },
             );
 
-            $self->{'_state'}->set_tpt_property(
-                $io,
+            $self->{'_state'}->set_transport_property(
+                $tpt,
                 'peer_roles',
                 $msg->get('Details')->{'roles'} || do {
                     die "Missing “Details.roles” in HELLO!";  #XXX
@@ -119,23 +115,22 @@ sub _receive_HELLO {
 
     my $session_id = Protocol::WAMP::Utils::generate_global_id();
 
-    $self->{'_state'}->set_tpt_property(
-        $io,
+    $self->{'_state'}->set_transport_property(
+        $tpt,
         'session_id',
         $session_id,
     );
 
-    $self->_send_WELCOME($io, $session_id);
+    $self->_send_WELCOME($tpt, $session_id);
 
     return;
 }
 
 sub _send_WELCOME {
-    my ($self, $io, $session) = @_;
+    my ($self, $tpt, $session) = @_;
 
-print STDERR "SENDING WELCOME\n";
     my $msg = $self->_create_and_send_msg(
-        $io,
+        $tpt,
         'WELCOME',
         $session,
         $self->GET_DETAILS_HR(),
@@ -145,21 +140,15 @@ print STDERR "SENDING WELCOME\n";
 }
 
 sub _receive_GOODBYE {
-    my ($self, $io, $msg) = @_;
+    my ($self, $tpt, $msg) = @_;
 
-#    delete $self->{'_tpt_session'}{$io} or do {
-#        die "Got GOODBYE without a registered session!";
-#    };
-#
-#    delete $self->{'_tpt_realm'}{$io};
-
-    $self->{'_state'}->remove_tpt($io);
+    $self->{'_state'}->forget_transport($tpt);
 
     if ($self->{'_sent_GOODBYE'}) {
         $self->{'_finished'} = 1;
     }
     else {
-        $self->send_GOODBYE( $io, $msg->get('Details'), $msg->get('Reason') );
+        $self->send_GOODBYE( $tpt, $msg->get('Details'), $msg->get('Reason') );
     }
 
     return $self;
@@ -174,45 +163,41 @@ sub _receive_GOODBYE {
 #----------------------------------------------------------------------
 
 sub _create_and_send_msg {
-    my ($self, $io, $name, @parts) = @_;
+    my ($self, $tpt, $name, @parts) = @_;
 
     #This is in Peer.pm
     my $msg = $self->_create_msg($name, @parts);
 
-    $self->_send_msg($io, $msg);
+    $self->_send_msg($tpt, $msg);
 
     return $msg;
 }
 
 sub _create_and_send_session_msg {
-    my ($self, $io, $name, @parts) = @_;
+    my ($self, $tpt, $name, @parts) = @_;
 
     #This is in Peer.pm
     my $msg = $self->_create_msg(
         $name,
-        $io->get_next_session_scope_id(),
+        $tpt->get_next_session_scope_id(),
         @parts,
     );
 
-    $self->_send_msg($io, $msg);
+    $self->_send_msg($tpt, $msg);
 
     return $msg;
 }
 
 sub _send_msg {
-    my ($self, $io, $msg) = @_;
-
-    #if (!$self->{'_tpt_session'}{$io}) {
-    #    die "Already finished!";    #XXX
-    #}
+    my ($self, $tpt, $msg) = @_;
 
     #cache
-    $self->{'_tpt_peer_groks_msg'}{$io}{$msg->get_type()} ||= do {
+    $self->{'_tpt_peer_groks_msg'}{$tpt}{$msg->get_type()} ||= do {
 #        $self->_verify_receiver_can_accept_msg_type($msg->get_type());
         1;
     };
 
-    $io->write_wamp_message($msg);
+    $tpt->write_wamp_message($msg);
 
     return $self;
 }
@@ -220,10 +205,10 @@ sub _send_msg {
 #----------------------------------------------------------------------
 
 sub _create_and_send_ERROR {
-    my ($self, $io, $subtype, @args) = @_;
+    my ($self, $tpt, $subtype, @args) = @_;
 
     return $self->_create_and_send_msg(
-        $io,
+        $tpt,
         'ERROR',
         Protocol::WAMP::Messages::get_type_number($subtype),
         @args,
@@ -231,7 +216,7 @@ sub _create_and_send_ERROR {
 }
 
 sub _catch_exception {
-    my ($self, $io, $req_type, $req_id, $todo_cr) = @_;
+    my ($self, $tpt, $req_type, $req_id, $todo_cr) = @_;
 
     my $ret;
 
@@ -240,7 +225,7 @@ sub _catch_exception {
     }
     catch {
         $self->_create_and_send_ERROR(
-            $io,
+            $tpt,
             $req_type,
             $req_id,
             {},
@@ -253,7 +238,7 @@ sub _catch_exception {
 }
 
 sub _catch_pre_handshake_exception {
-    my ($self, $io, $todo_cr) = @_;
+    my ($self, $tpt, $todo_cr) = @_;
 
     my $ret;
 
@@ -262,7 +247,7 @@ sub _catch_pre_handshake_exception {
     }
     catch {
         $self->_create_and_send_msg(
-            $io,
+            $tpt,
             'ABORT',
             {
                 message => "$_",
@@ -270,8 +255,8 @@ sub _catch_pre_handshake_exception {
             'net-wamp.error',
         );
 
-        if ($self->{'_state'}->io_exists($io)) {
-            $self->{'_state'}->remove_tpt($io);
+        if ($self->{'_state'}->transport_exists($tpt)) {
+            $self->{'_state'}->forget_transport($tpt);
         }
     };
 
@@ -282,22 +267,22 @@ sub _catch_pre_handshake_exception {
 #XXX Copy/paste …
 
 sub io_peer_is {
-    my ($self, $io, $role) = @_;
+    my ($self, $tpt, $role) = @_;
 
     $self->_verify_handshake();
 
-    return $self->{'_state'}->get_tpt_property($io, 'peer_roles')->{$role} ? 1 : 0;
+    return $self->{'_state'}->get_transport_property($tpt, 'peer_roles')->{$role} ? 1 : 0;
 }
 
 sub io_peer_role_supports_boolean {
-    my ($self, $io, $role, $feature) = @_;
+    my ($self, $tpt, $role, $feature) = @_;
 
     die "Need role!" if !length $role;
     die "Need feature!" if !length $feature;
 
     $self->_verify_handshake();
 
-    my $peer_roles = $self->{'_state'}->get_tpt_property($io, 'peer_roles');
+    my $peer_roles = $self->{'_state'}->get_transport_property($tpt, 'peer_roles');
 
     if ( my $rolfeat = $peer_roles->{$role} ) {
         if ( my $features_hr = $rolfeat->{'features'} ) {

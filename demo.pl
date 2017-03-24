@@ -67,7 +67,7 @@ $inet->autoflush(1);
 
 my $wio = Net::WAMP::Transport::WebSocket::Client->new( $inet, $inet );
 
-my $client = WAMP_Client->new( io => $wio );
+my $client = WAMP_Client->new( transport => $wio );
 
 $wio->handshake( 'wss://demo.crossbar.io/ws', $client->get_serialization_format(), $client->get_websocket_message_type() );
 
