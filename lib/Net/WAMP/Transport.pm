@@ -76,10 +76,16 @@ sub read_wamp_message {
     return $msg;
 }
 
-sub messages_to_write {
+sub get_write_queue_size {
     my ($self) = @_;
 
     return 0 + @{ $self->{'_write_queue'} };
+}
+
+sub shift_write_queue {
+    my ($self) = @_;
+
+    return shift @{ $self->{'_write_queue'} };
 }
 
 sub process_write_queue {
@@ -138,11 +144,15 @@ sub _write_now_then_callback {
     };
 
     if ($wrote == length $_[0]) {
+        $self->{'_write_queue_partial'} = 0;
         $_[1]->() if $_[1];
         return 1;
     }
 
     substr( $_[0], 0, $wrote ) = q<>;
+
+    #This seems useful to track … ??
+    $self->{'_write_queue_partial'} = 1;
 
     return 0;
 }

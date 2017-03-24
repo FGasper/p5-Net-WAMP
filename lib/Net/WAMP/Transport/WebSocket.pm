@@ -29,12 +29,12 @@ sub check_heartbeat {
     return 1;
 }
 
-sub messages_to_write {
+sub get_write_queue_size {
     my ($self) = @_;
 
     return(
         ($self->{'_endpoint'} ? $self->{'_endpoint'}->get_write_queue_size() : 0)
-        + $self->SUPER::messages_to_write()
+        + $self->SUPER::get_write_queue_size()
     );
 }
 

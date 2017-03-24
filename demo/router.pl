@@ -57,7 +57,7 @@ my %fd_connection;
 
 #TODO handle select exception events
 while (1) {
-    my @to_write = grep { $_ && $_->messages_to_write() } values %fd_tpt;
+    my @to_write = grep { $_ && $_->get_write_queue_size() } values %fd_tpt;
     $_ = $tpt_fh{$_} for @to_write;
 
     my $wselect = @to_write ? IO::Select->new(@to_write) : undef;

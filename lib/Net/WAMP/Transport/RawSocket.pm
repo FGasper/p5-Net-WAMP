@@ -34,7 +34,7 @@ sub new {
     my $self = $class->SUPER::new(@args);
 
     $self->{'_ping_store'} = Net::WAMP::Transport::RawSocket::PingStore->new();
-    $self->{'_max_pings'} ||= DEFAULT_MAX_UNANSWERED_PINGS;
+    $self->{'_max_pings'} ||= DEFAULT_MAX_PINGS;
 
     return $self;
 }
@@ -58,6 +58,7 @@ my ($msg_type_code, $msg_size);
 sub _read_transport_message {
     my ($self) = @_;
 
+    #i.e., we were in the middle of reading:
     if ($self->{'_msg_size'}) {
         ($msg_type_code, $msg_size) = @{$self}{ '_msg_type_code', '_msg_size' };
     }
@@ -65,7 +66,7 @@ sub _read_transport_message {
         my $hdr = $self->_read_header();
         return if !length $hdr;
 
-        my ($mt_code, $len1, $len2)) = unpack 'CCn', $hdr;
+        my ($mt_code, $len1, $len2) = unpack 'CCn', $hdr;
 
         if ($mt_code > MSG_TYPE_PONG) {
             die sprintf("Unparsable RawSocket header (unrecognized lead byte): %v.02x", $hdr);
@@ -76,7 +77,7 @@ sub _read_transport_message {
         }
     }
 
-    my $body = $self->_read($msg_size);
+    my $body = $self->_read_now($msg_size);
 
     #I’m guessing that partial reads will be very rare, so not
     #bothering to optimize for now.
@@ -161,7 +162,6 @@ sub _get_and_unpack_handshake_header {
         die "Invalid first octet ($octet1)!";
     }
 
-print STDERR "before _get_max_length_value\n";
     $self->{'_max_output_size'} = Net::WAMP::Transport::RawSocket::Constants::get_max_length_value($octet2 >> 4);
 
     my $recv_serializer_code = ($octet2 & 0xf);

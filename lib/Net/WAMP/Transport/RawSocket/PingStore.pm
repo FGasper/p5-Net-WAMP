@@ -36,7 +36,7 @@ sub remove {
     return 0;
 }
 
-sub get_count { return 0 + @$self; }
+sub get_count { return 0 + @{$_[0]}; }
 
 #----------------------------------------------------------------------
 
