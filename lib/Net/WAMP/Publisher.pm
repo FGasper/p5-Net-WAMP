@@ -12,8 +12,6 @@ use Module::Load ();
 
 use Types::Serialiser ();
 
-use lib '/Users/felipe/code/p5-Protocol-WAMP/lib';
-
 use constant {
     receiver_role_of_PUBLISH => 'broker',
 };

@@ -11,7 +11,6 @@ use parent qw(
 
 use Module::Load ();
 
-use lib '/Users/felipe/code/p5-Protocol-WAMP/lib';
 use Net::WAMP::Messages ();
 use Net::WAMP::Utils ();
 

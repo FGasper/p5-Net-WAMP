@@ -7,7 +7,6 @@ use Module::Load ();
 
 use parent qw( Net::WAMP::Peer );
 
-use lib '/Users/felipe/code/p5-Protocol-WAMP/lib';
 use Net::WAMP::Messages ();
 
 use Net::WAMP::Client::Features ();

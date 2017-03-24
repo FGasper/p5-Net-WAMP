@@ -6,13 +6,10 @@ use autodie;
 
 use parent 'Net::WAMP::Transport::WebSocket';
 
-use lib '/Users/Felipe/code/p5-Net-WebSocket/lib';
-
 use Net::WebSocket::Endpoint::Server ();
 use Net::WebSocket::Mask ();
 use Net::WebSocket::Parser ();
 use Net::WebSocket::Handshake::Server ();
-use Net::WebSocket::X ();
 
 use constant CRLF => "\x0d\x0a";
 

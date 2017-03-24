@@ -10,8 +10,6 @@ use parent qw(
 
 use Module::Load ();
 
-use lib '/Users/felipe/code/p5-Protocol-WAMP/lib';
-
 use constant {
     receiver_role_of_SUBSCRIBE => 'broker',
     receiver_role_of_UNSUBSCRIBE => 'broker',

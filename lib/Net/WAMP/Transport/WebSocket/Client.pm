@@ -5,8 +5,6 @@ use warnings;
 
 use parent 'Net::WAMP::Transport::WebSocket';
 
-use lib '/Users/Felipe/code/p5-Net-WebSocket/lib';
-
 use Net::WebSocket::Endpoint::Client ();
 use Net::WebSocket::Frame::text ();
 use Net::WebSocket::Mask ();
