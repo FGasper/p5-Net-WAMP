@@ -8,7 +8,6 @@ use parent qw(
     Net::WAMP::SessionScope
 );
 
-use File::Spec ();
 use Module::Load ();
 
 use Types::Serialiser ();

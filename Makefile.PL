@@ -16,10 +16,16 @@ WriteMakefile(
     PREREQ_PM    => {
         'autodie'                  => 0,
         'parent'                   => 0,
-        'overload' => 0,
         'X::Tiny'   => 0,
         'Module::Load'  => 0,
         'Call::Context' => 0,
+        'Try::Tiny' => 0,
+        'Types::Serialiser' => 0,
+
+        #recommend JSON
+
+        #XXX FIXME Don’t require this?
+        #'HTTP::Response' => 0,
     },
     META_MERGE => {
         'meta-spec' => { version => 2 },
