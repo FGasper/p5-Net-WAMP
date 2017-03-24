@@ -14,9 +14,8 @@ use parent qw(
     Net::WAMP::Transport::Base::Handshaker
 );
 
-use Net::WebSocket::PingStore ();
-
 use Net::WAMP::Transport::RawSocket::Constants ();
+use Net::WAMP::Transport::RawSocket::PingStore ();
 use Net::WAMP::X ();
 
 use constant {
@@ -34,7 +33,7 @@ sub new {
 
     my $self = $class->SUPER::new(@args);
 
-    $self->{'_ping_store'} = Net::WebSocket::PingStore->new();
+    $self->{'_ping_store'} = Net::WAMP::Transport::RawSocket::PingStore->new();
     $self->{'_max_pings'} ||= DEFAULT_MAX_UNANSWERED_PINGS;
 
     return $self;
