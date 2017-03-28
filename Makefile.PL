@@ -17,8 +17,8 @@ WriteMakefile(
         'autodie'                  => 0,
         'parent'                   => 0,
         'X::Tiny'   => 0,
+        'IO::SigGuard' => 0,
         'Module::Load'  => 0,
-        'Call::Context' => 0,
         'Try::Tiny' => 0,
         'Types::Serialiser' => 0,
 
@@ -32,8 +32,8 @@ WriteMakefile(
         resources   => {
             repository => {
                 type => 'git',
-                url  => 'https://github.com/FGasper/p5-Net-WebSocket.git',
-                web  => 'https://github.com/FGasper/p5-Net-WebSocket',
+                url  => 'https://github.com/FGasper/p5-Net-WAMP.git',
+                web  => 'https://github.com/FGasper/p5-Net-WAMP',
             },
         },
     },

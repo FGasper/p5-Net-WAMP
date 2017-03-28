@@ -39,13 +39,6 @@ use constant MSGS => {
 
 my %NAMES;
 
-#use Call::Context ();
-#
-#sub get_names {
-#    Call::Context::must_be_list();
-#    return keys %{ MSGS() };
-#}
-
 sub get_type_number {
     my ($name) = @_;
 

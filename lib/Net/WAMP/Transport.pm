@@ -5,7 +5,7 @@ use warnings;
 
 use Net::WAMP::Messages ();
 
-use IO::Sys ();
+use IO::SigGuard ();
 
 use Net::WAMP::X ();
 
@@ -138,7 +138,7 @@ sub _write_now_then_callback {
 
     local $!;
 
-    my $wrote = IO::Sys::write( $self->{'_out_fh'}, $_[0] ) || do {
+    my $wrote = IO::SigGuard::syswrite( $self->{'_out_fh'}, $_[0] ) || do {
         die Net::WAMP::X->create('WriteError', OS_ERROR => $!) if $!;
         return undef;
     };
@@ -170,7 +170,7 @@ sub _read_now {
 
     local $!;
 
-    $bytes -= IO::Sys::read( $self->{'_in_fh'}, $self->{'_read_buffer'}, $bytes - length $self->{'_read_buffer'}, length $self->{'_read_buffer'} ) || do {
+    $bytes -= IO::SigGuard::sysread( $self->{'_in_fh'}, $self->{'_read_buffer'}, $bytes - length $self->{'_read_buffer'}, length $self->{'_read_buffer'} ) || do {
         die Net::WAMP::X->create('ReadError', OS_ERROR => $!) if $!;
 
         die Net::WAMP::X->create('EmptyRead') if !$self->{'_in_fh'}->blocking();
