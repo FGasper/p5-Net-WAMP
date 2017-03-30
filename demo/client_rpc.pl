@@ -10,8 +10,8 @@ use FindBin;
 use lib "$FindBin::Bin/../lib";
 
 use parent qw(
-    Net::WAMP::Caller
-    Net::WAMP::Callee
+    Net::WAMP::Role::Caller
+    Net::WAMP::Role::Callee
 );
 
 use JSON;
@@ -54,8 +54,6 @@ package main;
 
 my $host_port = $ARGV[0] or die "Need [host:]port!";
 substr($host_port, 0, 0) = 'localhost:' if -1 == index($host_port, ':');
-
-use Carp::Always;
 
 use Net::WAMP::Transport::WebSocket::Client ();
 

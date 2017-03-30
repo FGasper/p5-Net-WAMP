@@ -4,7 +4,7 @@ use strict;
 use warnings;
 
 use parent qw(
-    Net::WAMP::Transport
+    Net::WAMP::Transport::Base::Stream
     Net::WAMP::Transport::Base::Handshaker
 );
 
@@ -13,6 +13,40 @@ use constant SUBPROTOCOL_BASE => 'wamp.2.';
 use Module::Load ();
 
 use Net::WAMP::X ();
+
+#----------------------------------------------------------------------
+# Class method
+
+sub get_subprotocol {
+    my ($self, $serialization) = @_;
+
+    if (!$serialization) {
+        die 'Need serialization name!';
+    };
+
+    return $self->SUBPROTOCOL_BASE() . $serialization;
+}
+
+#----------------------------------------------------------------------
+
+#In addition to the base class’s requirement(s), this requires “io”.
+sub new {
+    my ($class, %opts) = @_;
+
+    my $self = $class->SUPER::new(%opts);
+
+    my $io = $opts{'io'};
+
+    $self->{'_endpoint'} = ($self->ENDPOINT_CLASS())->new(
+        parser => Net::WebSocket::Parser->new(
+            $io->get_input_fh(),
+            $start_buffer,
+        ),
+        ( $io->blocking() ? ( out => $io->get_output_fh() ) : () ),
+    );
+
+    return $self;
+}
 
 sub check_heartbeat {
     my ($self) = @_;

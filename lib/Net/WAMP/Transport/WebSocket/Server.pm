@@ -11,7 +11,10 @@ use Net::WebSocket::Mask ();
 use Net::WebSocket::Parser ();
 use Net::WebSocket::Handshake::Server ();
 
-use constant CRLF => "\x0d\x0a";
+use constant {
+    CRLF => "\x0d\x0a",
+    ENDPOINT_CLASS => 'Net::WebSocket::Endpoint::Server',
+};
 
 use constant FRAME_MASK_ARGS => ();
 
@@ -26,19 +29,15 @@ sub handshake {
 
     #A sufficiently large read size that it should accommodate
     #any WebSocket header set.
-print STDERR "reading\n";
     $self->_read_now(65536);
-print STDERR "done _read_now\n";
 
     $self->{'_in_fh'}->blocking(1) if $was_blocking;
 
     my $buf_sr = $self->_read_buffer_sr();
 
     my $hdrs_end_idx = index($$buf_sr, CRLF . CRLF);
-print STDERR "buf($hdrs_end_idx): [$$buf_sr]\n";
 
     if (-1 != $hdrs_end_idx) {
-print STDERR "can parse headesr\n";
         my $rqt = HTTP::Request->parse( substr( $$buf_sr, 0, 4 + $hdrs_end_idx, q<> ) );
 
         #validate headers … TODO

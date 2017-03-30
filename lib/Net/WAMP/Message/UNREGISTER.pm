@@ -1,6 +1,6 @@
 package Net::WAMP::Message::UNREGISTER;
 
-use parent qw( Net::WAMP::SessionMessage );
+use parent qw( Net::WAMP::Base::SessionMessage );
 
 use constant PARTS => qw( Request  Registration );
 

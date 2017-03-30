@@ -10,8 +10,8 @@ use FindBin;
 use lib "$FindBin::Bin/../lib";
 
 use parent qw(
-    Net::WAMP::Publisher
-    Net::WAMP::Subscriber
+    Net::WAMP::Role::Publisher
+    Net::WAMP::Role::Subscriber
 );
 
 use JSON;
@@ -30,10 +30,6 @@ package main;
 my $host_port = $ARGV[0] or die "Need [host:]port!";
 substr($host_port, 0, 0) = 'localhost:' if -1 == index($host_port, ':');
 
-use Carp::Always;
-
-use Net::WAMP::Transport::RawSocket::Client ();
-
 use IO::Socket::INET ();
 #my $inet = IO::Socket::INET->new('demo.crossbar.io:80');
 my $inet = IO::Socket::INET->new($host_port);
@@ -41,29 +37,57 @@ die "[$!][$@]" if !$inet;
 
 $inet->autoflush(1);
 
-my $wio = Net::WAMP::Transport::RawSocket::Client->new( $inet, $inet );
+use IO::Framed::Blocking ();
 
-$wio->handshake();
+use Net::WAMP::RawSocket::Client ();
 
-my $client = WAMP_Client->new( transport => $wio );
-
-$client->send_HELLO(
-    'felipes_demo', #'myrealm',
+my $rs = Net::WAMP::RawSocket::Client->new(
+    io => IO::Framed::Blocking->new( $inet, $inet ),
+    serialization => 'json',
 );
+
+use Carp::Always;
+
+print STDERR "send hs\n";
+$rs->send_handshake();
+print STDERR "sent hs\n";
+$rs->verify_handshake();
+print STDERR "vf hs\n";
+
+my $client = WAMP_Client->new(
+    serialization => 'json',
+);
+
+sub _send {
+    my $create_func = "send_" . shift;
+    $rs->send_message( $client->message_object_to_bytes( $client->$create_func(@_) ) );
+
+    return;
+}
+
+my $got_msg;
+
+sub _receive {
+    1 until $got_msg = $rs->get_next_message();
+    return $client->handle_message($got_msg->get_payload());
+}
+
+_send( 'HELLO', 'felipes_demo', ); #'myrealm',
 
 use Data::Dumper;
 print STDERR "RECEIVING …\n";
-print Dumper($client->handle_next_message());
+print Dumper(_receive());
 print STDERR "RECEIVED …\n";
 
 #----------------------------------------------------------------------
 
-$client->send_SUBSCRIBE( {}, 'com.myapp.hello' );
+_send( 'SUBSCRIBE', {}, 'com.myapp.hello' );
 print STDERR "sent subscribe\n";
-print Dumper($client->handle_next_message());
+print Dumper(_receive());
 
 use Types::Serialiser ();
-$client->send_PUBLISH(
+_send(
+    'PUBLISH',
     {
         acknowledge => Types::Serialiser::true(),
         exclude_me => Types::Serialiser::false(),
@@ -72,11 +96,11 @@ $client->send_PUBLISH(
     ['Hello, world! This is my published message.'],
 );
 
-#PUBLISHED
-print Dumper($client->handle_next_message());
-
 #EVENT
-print Dumper($client->handle_next_message());
+print Dumper(_receive());
+
+#PUBLISHED
+print Dumper(_receive());
 
 #----------------------------------------------------------------------
 

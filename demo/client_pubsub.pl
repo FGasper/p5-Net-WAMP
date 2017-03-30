@@ -10,8 +10,8 @@ use FindBin;
 use lib "$FindBin::Bin/../lib";
 
 use parent qw(
-    Net::WAMP::Publisher
-    Net::WAMP::Subscriber
+    Net::WAMP::Role::Publisher
+    Net::WAMP::Role::Subscriber
 );
 
 use JSON;
@@ -41,7 +41,9 @@ die "[$!][$@]" if !$inet;
 
 $inet->autoflush(1);
 
-my $wio = Net::WAMP::Transport::WebSocket::Client->new( $inet, $inet );
+#my $wio = Net::WAMP::Transport::WebSocket::Client->new( $inet, $inet );
+
+use Net::WAMP::Transport::Queue ();
 
 $wio->handshake( 'wss://demo.crossbar.io/ws', 'json' );
 

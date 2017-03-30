@@ -21,27 +21,20 @@ sub handshake {
     #Breaking normal form in negative-if to have chronological order.
 
     #State A
-print STDERR "client hs-a\n";
     if (!$self->_serialization_is_set()) {
-print STDERR "client hs-b\n";
         $self->{'_max_input_size'} = $opts{'max_message_length'} || Net::WAMP::Transport::RawSocket::Constants::MAX_MESSAGE_LENGTH();
 
         my $serialization = $opts{'serialization'} || Net::WAMP::Transport::RawSocket::Constants::DEFAULT_SERIALIZATION();
         $self->_set_serialization_format($serialization);
 
-        my $max_len_code = Net::WAMP::Transport::RawSocket::Constants::get_max_length_code($self->{'_max_input_size'});
-
         $self->{'_rs_serialization_code'} = Net::WAMP::Transport::RawSocket::Constants::get_serialization_code($serialization);
 
         $self->_write_bytes(
-            pack(
-                'C*',
-                Net::WAMP::Transport::RawSocket::Constants::MAGIC_FIRST_OCTET(),
-                ($max_len_code << 4) + $self->{'_rs_serialization_code'},
-                0, 0,   #reserved
+            _create_client_handshake(
+                $self->{'_max_input_size'},
+                $serialization,
             ),
             sub {
-print STDERR "IN CALLBACK\n";
                 $self->{'_sent_handshake'} = 1;
             },
         );
@@ -51,7 +44,6 @@ print STDERR "IN CALLBACK\n";
 
     #States D and E
     if ($self->{'_sent_handshake'}) {
-print STDERR "reading header\n";
         my ($octet2, $ser_name, $resp_serializer_code) = $self->_get_and_unpack_handshake_header();
 
         #States D and E exit here; only continue if got the full header.
@@ -74,6 +66,22 @@ print STDERR "reading header\n";
     }
 
     return;
+}
+
+#static
+sub _create_client_handshake {
+    my ($max_len, $serialization) = @_;
+
+    my $max_len_code = Net::WAMP::Transport::RawSocket::Constants::get_max_length_code($max_len);
+
+    my $serialization_code = Net::WAMP::Transport::RawSocket::Constants::get_serialization_code($serialization);
+
+    return pack(
+        'C*',
+        Net::WAMP::Transport::RawSocket::Constants::MAGIC_FIRST_OCTET(),
+        ($max_len_code << 4) + $serialization_code,
+        0, 0,   #reserved
+    );
 }
 
 1;

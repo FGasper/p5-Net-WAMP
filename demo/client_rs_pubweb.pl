@@ -10,8 +10,8 @@ use FindBin;
 use lib "$FindBin::Bin/../lib";
 
 use parent qw(
-    Net::WAMP::Publisher
-    Net::WAMP::Subscriber
+    Net::WAMP::Role::Publisher
+    Net::WAMP::Role::Subscriber
 );
 
 #----------------------------------------------------------------------

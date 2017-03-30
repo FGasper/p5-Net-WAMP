@@ -1,6 +1,6 @@
 package Net::WAMP::Message::CHALLENGE;
 
-use parent qw( Net::WAMP::Message );
+use parent qw( Net::WAMP::Base::Message );
 
 use constant PARTS => qw( AuthMethod );
 

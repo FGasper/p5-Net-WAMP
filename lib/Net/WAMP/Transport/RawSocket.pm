@@ -10,7 +10,7 @@ use strict;
 use warnings;
 
 use parent qw(
-    Net::WAMP::Transport
+    Net::WAMP::Transport::Base::Stream
     Net::WAMP::Transport::Base::Handshaker
 );
 

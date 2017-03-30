@@ -1,7 +1,7 @@
 package Net::WAMP::Message::CALL;
 
-use parent qw( Net::WAMP::SessionMessage );
+use parent qw( Net::WAMP::Base::SessionMessage );
 
-use constant PARTS => qw( Request  Options  Procedure  Arguments  ArgumentsKw );
+use constant PARTS => qw( Request  Metadata  Procedure  Arguments  ArgumentsKw );
 
 1;

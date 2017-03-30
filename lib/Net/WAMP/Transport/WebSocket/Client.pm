@@ -13,7 +13,10 @@ use Net::WebSocket::Handshake::Client ();
 
 use HTTP::Response ();
 
-use constant FIRST_LINE_HEADER => 'HTTP/1.1 101';
+use constant {
+    FIRST_LINE_HEADER => 'HTTP/1.1 101',
+    ENDPOINT_CLASS => 'Net::WebSocket::Endpoint::Client',
+};
 
 sub FRAME_MASK_ARGS {
     return( mask => Net::WebSocket::Mask::create() );

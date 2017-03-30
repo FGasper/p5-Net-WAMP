@@ -1,34 +1,48 @@
 package Net::WAMP::Transport;
 
+#Subclasses must implement:
+#
+#   - _serialized_wamp_to_transport_bytes
+#   - _read_transport_message
+#
+
 use strict;
 use warnings;
 
-use Net::WAMP::Messages ();
-
 use IO::SigGuard ();
+use Module::Load ();
 
+use Net::WAMP::Messages ();
 use Net::WAMP::X ();
 
 use constant CONSTRUCTOR_OPTS => ();
 
-sub new {
-    my ($class, $in_fh, $out_fh, %opts) = @_;
+use constant IO_BASE = 'Net::WAMP::Transport::IO';
 
-    my $blocking_writes = $out_fh->blocking();
+#We require “serialization” here.
+sub new {
+    my ($class, %opts) = @_;
+
+    #Convenience?
+    #if ('ARRAY' eq ref $io) {
+    #    my $io_mod = "Net::WAMP::Transport::IO::$io->[0]";
+    #    Module::Load::load($io_mod) if !$io_mod->can('new');
+    #    $io = $io_mod->new( @{$io}[ 1 .. $#$io ] );
+    #}
 
     my $self = {
-        _in_fh => $in_fh,
-        _out_fh => $out_fh,
-        _last_session_scope_id => 0,
-        _write_queue => [],
-        _read_buffer => q<>,
-
         ( map { ( "_$_" => $opts{$_} ) } $class->CONSTRUCTOR_OPTS() ),
 
-        _write_func => ( $blocking_writes ? '_write_now_then_callback' : '_enqueue_write' ),
+        _last_session_scope_id => 0,
     };
 
-    return bless $self, $class;
+    bless $self, $class;
+
+    my $serialization = $opts{'serialization'} or die 'Need “serialization”!';
+
+    $self->_set_serialization_format($serialization);
+
+    return $self;
 }
 
 sub write_wamp_message {
@@ -61,7 +75,7 @@ sub read_wamp_message {
 
     my $msg = $self->_create_msg( $type, @$array_ref );
 
-    if ($msg->isa('Net::WAMP::SessionMessage')) {
+    if ($msg->isa('Net::WAMP::Base::SessionMessage')) {
         my $ss_id = $msg->get( $msg->SESSION_SCOPE_ID_ELEMENT() );
 
         if ( $ss_id != 1 + $self->{'_last_session_scope_id'} ) {
@@ -76,147 +90,19 @@ sub read_wamp_message {
     return $msg;
 }
 
-sub get_write_queue_size {
-    my ($self) = @_;
-
-    return 0 + @{ $self->{'_write_queue'} };
-}
-
-sub shift_write_queue {
-    my ($self) = @_;
-
-    return shift @{ $self->{'_write_queue'} };
-}
-
-sub process_write_queue {
-    my ($self) = @_;
-
-    local $SIG{'PIPE'} = 'IGNORE' if $self->_is_shut_down();
-
-    while ( my $qi = $self->{'_write_queue'}[0] ) {
-        if ( $self->_write_now_then_callback( @$qi ) ) {
-            shift @{ $self->{'_write_queue'} };
-        }
-        else {
-            last;
-        }
-    }
-
-    return;
-}
-
 sub get_next_session_scope_id {
     my ($self) = @_;
 
     return ++$self->{'_last_session_scope_id'};
 }
 
-#----------------------------------------------------------------------
 
-#XXX De-duplicate TODO
-sub _create_msg {
-    my ($self, $name, @parts) = @_;
-
-    my $mod = "Net::WAMP::Message::$name";
-    Module::Load::load($mod) if !$mod->can('new');
-
-    return $mod->new(@parts);
-}
 
 #----------------------------------------------------------------------
 
-sub _write_bytes {
-    my $self = shift;
 
-    my $write_func = $self->{'_write_func'};
 
-    return $self->$write_func(@_);
-}
 
-sub _write_now_then_callback {
-    my ($self) = shift;
-
-    local $!;
-
-    my $wrote = IO::SigGuard::syswrite( $self->{'_out_fh'}, $_[0] ) || do {
-        die Net::WAMP::X->create('WriteError', OS_ERROR => $!) if $!;
-        return undef;
-    };
-
-    if ($wrote == length $_[0]) {
-        $self->{'_write_queue_partial'} = 0;
-        $_[1]->() if $_[1];
-        return 1;
-    }
-
-    substr( $_[0], 0, $wrote ) = q<>;
-
-    #This seems useful to track … ??
-    $self->{'_write_queue_partial'} = 1;
-
-    return 0;
-}
-
-#We assume here that whatever read may be incomplete at first
-#will eventually be repeated so that we can complete it. e.g.:
-#
-#   - read 4 bytes, receive 1, cache it - return q<>
-#   - select()
-#   - read 4 bytes again; since we already have 1 byte, only read 3
-#       … and now we get the remaining 3, so return the buffer.
-#
-sub _read_now {
-    my ($self, $bytes) = @_;
-
-    local $!;
-
-    $bytes -= IO::SigGuard::sysread( $self->{'_in_fh'}, $self->{'_read_buffer'}, $bytes - length $self->{'_read_buffer'}, length $self->{'_read_buffer'} ) || do {
-        die Net::WAMP::X->create('ReadError', OS_ERROR => $!) if $!;
-
-        die Net::WAMP::X->create('EmptyRead') if !$self->{'_in_fh'}->blocking();
-    };
-
-    return $bytes ? q<> : substr( $self->{'_read_buffer'}, 0, length $self->{'_read_buffer'}, q<> );
-}
-
-sub _read_buffer_sr {
-    my ($self) = @_;
-    return \$self->{'_read_buffer'};
-}
-
-sub _enqueue_write {
-    my $self = shift;
-
-    push @{ $self->{'_write_queue'} }, \@_;
-
-    return;
-}
-
-sub _set_serialization_format {
-    my ($self, $serialization) = @_;
-
-    my $ser_mod = "Net::WAMP::Serialization::$serialization";
-    Module::Load::load($ser_mod) if !$ser_mod->can('stringify');
-    $self->{'_serialization_module'} = $ser_mod;
-
-    return $self;
-}
-
-sub _serialization_is_set {
-    my ($self) = @_;
-
-    return $self->{'_serialization_module'} ? 1 : 0;
-}
-
-sub _stringify {
-    my ($self) = shift;
-    return $self->{'_serialization_module'}->can('stringify')->(@_);
-}
-
-sub _destringify {
-    my ($self) = shift;
-    return $self->{'_serialization_module'}->can('parse')->(@_);
-}
 
 sub _set_shutdown {
     shift()->{'_shutdown_happened'} = 1;
