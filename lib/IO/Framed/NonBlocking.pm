@@ -95,6 +95,9 @@ sub get_write_queue_size {
 sub _write_now_then_callback {
     local $!;
 
+use Data::Dumper;
+$Data::Dumper::Useqq = 1;
+print STDERR Dumper( "writing to " . fileno($_[0]->{'_out_fh'}), $_[1] );
     my $wrote = IO::SigGuard::syswrite( $_[0]->{'_out_fh'}, $_[1] ) || do {
 
         if ($! && (!$_[0]->{'_allow_EAGAIN'} || !$!{'EAGAIN'})) {

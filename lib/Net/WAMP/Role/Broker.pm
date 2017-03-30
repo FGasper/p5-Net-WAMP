@@ -63,10 +63,13 @@ sub publish {
     my ($self, $session, $options, $topic, $args_ar, $args_hr) = @_;
 
     my $subscribers_hr = $self->_get_topic_subscribers($session, $topic);
+use Data::Dumper;
+print STDERR Dumper('subscribers', $subscribers_hr);
 
     my $publication = Net::WAMP::Utils::generate_global_id();
 
     for my $rcp (values %$subscribers_hr) {
+print STDERR "send to $rcp->{'session'}\n";
 
         #Implements “Publisher Exclusion” feature
         if ( $session eq $rcp->{'session'} ) {

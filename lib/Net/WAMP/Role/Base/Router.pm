@@ -192,6 +192,7 @@ sub _send_msg {
 #        $self->_verify_receiver_can_accept_msg_type($msg->get_type());
         1;
     };
+print STDERR "Enqueueing for $session\n";
 
     $session->enqueue_message_to_send($msg);
 
