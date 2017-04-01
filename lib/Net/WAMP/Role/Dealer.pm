@@ -21,22 +21,22 @@ BEGIN {
 #----------------------------------------------------------------------
 
 sub register {
-    my ($self, $tpt, $options, $procedure) = @_;
+    my ($self, $session, $options, $procedure) = @_;
 
-    if ( $self->_procedure_is_in_state($tpt, $procedure) ) {
-        my $realm = $self->_get_realm_for_tpt($tpt);
+    if ( $self->_procedure_is_in_state($session, $procedure) ) {
+        my $realm = $self->_get_realm_for_session($session);
         die "Already registered in “$realm”: “$procedure”";
     }
 
     $self->{'_state'}->set_realm_property(
-        $tpt,
-        "procedure_tpt_$procedure",
-        $tpt,
+        $session,
+        "procedure_session_$procedure",
+        $session,
     );
 
     #unused? See advanced
     $self->{'_state'}->set_realm_property(
-        $tpt,
+        $session,
         "procedure_options_$procedure",
         $options,
     );
@@ -45,14 +45,14 @@ sub register {
 
     #CALL needs to look it up this way.
     $self->{'_state'}->set_realm_property(
-        $tpt,
+        $session,
         "procedure_registration_$procedure",
         $registration,
     );
 
     #UNREGISTER needs to look it up this way.
     $self->{'_state'}->set_realm_property(
-        $tpt,
+        $session,
         "registration_procedure_$registration",
         $procedure,
     );
@@ -61,26 +61,26 @@ sub register {
 }
 
 sub _procedure_is_in_state {
-    my ($self, $tpt, $procedure) = @_;
+    my ($self, $session, $procedure) = @_;
 
-    return !!$self->{'_state'}->get_realm_property($tpt, "procedure_registration_$procedure");
+    return !!$self->{'_state'}->get_realm_property($session, "procedure_registration_$procedure");
 }
 
 sub unregister {
-    my ($self, $tpt, $registration) = @_;
+    my ($self, $session, $registration) = @_;
 
     my $procedure = $self->{'_state'}->unset_realm_property("registration_procedure_$registration");
     if (!defined $procedure) {
-        my $realm = $self->_get_realm_for_tpt($tpt);
+        my $realm = $self->_get_realm_for_session($session);
         die "No known procedure in “$realm” for registration “$registration”!";
     }
 
     for my $k (
-        "procedure_tpt_$procedure",
+        "procedure_session_$procedure",
         "procedure_options_$procedure",
         "procedure_registration_$procedure",
     ) {
-        $self->{'_state'}->unset_realm_property( $tpt, $k );
+        $self->{'_state'}->unset_realm_property( $session, $k );
     }
 
     return;
@@ -95,10 +95,13 @@ sub unregister {
 #----------------------------------------------------------------------
 
 sub _receive_REGISTER {
-    my ($self, $tpt, $msg) = @_;
+    my ($self, $session, $msg) = @_;
+
+use Data::Dumper;
+print STDERR Dumper $msg;
 
     return $self->_catch_exception(
-        $tpt,
+        $session,
         'REGISTER',
         $msg->get('Request'),
         sub {
@@ -107,9 +110,9 @@ sub _receive_REGISTER {
             #XXX TODO
             #$self->_verify_registration_request( $realm, $opts, $proc );
 
-            my $reg_id = $self->register($tpt, $opts, $proc);
+            my $reg_id = $self->register($session, $opts, $proc);
 
-            $self->_send_REGISTERED( $tpt, $msg->get('Request'), $reg_id );
+            $self->_send_REGISTERED( $session, $msg->get('Request'), $reg_id );
 
             return $reg_id;
         },
@@ -117,10 +120,10 @@ sub _receive_REGISTER {
 }
 
 sub _send_REGISTERED {
-    my ($self, $tpt, $req_id, $reg_id) = @_;
+    my ($self, $session, $req_id, $reg_id) = @_;
 
     return $self->_create_and_send_msg(
-        $tpt,
+        $session,
         'REGISTERED',
         $req_id,
         $reg_id,
@@ -128,16 +131,16 @@ sub _send_REGISTERED {
 }
 
 sub _receive_UNREGISTER {
-    my ($self, $tpt, $msg) = @_;
+    my ($self, $session, $msg) = @_;
 
     return $self->_catch_exception(
-        $tpt,
+        $session,
         'UNREGISTER',
         $msg->get('Request'),
         sub {
-            $self->unregister( $tpt, $msg->get('Registration') );
+            $self->unregister( $session, $msg->get('Registration') );
 
-            $self->send_UNREGISTERED( $tpt, $msg->get('Request') );
+            $self->send_UNREGISTERED( $session, $msg->get('Request') );
 
             return;
         },
@@ -149,17 +152,17 @@ sub _receive_UNREGISTER {
 }
 
 sub send_UNREGISTERED {
-    my ($self, $tpt, $req_id) = @_;
+    my ($self, $session, $req_id) = @_;
 
     return $self->_create_and_send_msg(
-        $tpt,
+        $session,
         'UNREGISTERED',
         $req_id,
     );
 }
 
 sub _receive_CALL {
-    my ($self, $tpt, $msg) = @_;
+    my ($self, $session, $msg) = @_;
 
     #TODO: validate
 
@@ -167,49 +170,49 @@ sub _receive_CALL {
         die "Need “Procedure”!";
     };
 
-    my $target_tpt = $self->{'_state'}->get_realm_property(
-        $tpt,
-        "procedure_tpt_$procedure",
+    my $target_session = $self->{'_state'}->get_realm_property(
+        $session,
+        "procedure_session_$procedure",
     );
 
-    if (!$target_tpt) {
-        my $realm = $self->_get_realm_for_tpt($tpt);
+    if (!$target_session) {
+        my $realm = $self->_get_realm_for_session($session);
         die "Unknown procedure “$procedure” in realm “$realm”!";
     }
 
     my $registration = $self->{'_state'}->get_realm_property(
-        $tpt,
+        $session,
         "procedure_registration_$procedure",
     );
 
     my $msg2 = $self->_send_INVOCATION(
-        $target_tpt,
+        $target_session,
         $registration,
         {}, #TODO: determine support
         $msg->get('Arguments'),
         $msg->get('ArgumentsKw'),
     );
 
-    $self->{'_state'}->set_transport_property(
-        $target_tpt,
+    $self->{'_state'}->set_session_property(
+        $target_session,
         'invocation_call_req_id_' . $msg2->get('Request'),
         $msg->get('Request'),
     );
 
-    $self->{'_state'}->set_transport_property(
-        $target_tpt,
-        'invocation_call_tpt_' . $msg2->get('Request'),
-        $tpt,
+    $self->{'_state'}->set_session_property(
+        $target_session,
+        'invocation_call_session_' . $msg2->get('Request'),
+        $session,
     );
 
     return;
 }
 
 sub _send_INVOCATION {
-    my ($self, $tpt, $reg_id, $details, $args_ar, $args_hr) = @_;
+    my ($self, $session, $reg_id, $details, $args_ar, $args_hr) = @_;
 
     return $self->_create_and_send_session_msg(
-        $tpt,
+        $session,
         'INVOCATION',
         $reg_id,
         $details,
@@ -218,12 +221,12 @@ sub _send_INVOCATION {
 }
 
 sub _receive_YIELD {
-    my ($self, $tpt, $msg) = @_;
+    my ($self, $session, $msg) = @_;
 
     my $invoc_req_id = $msg->get('Request');
 
-    my $orig_req_id = $self->{'_state'}->unset_transport_property(
-        $tpt,
+    my $orig_req_id = $self->{'_state'}->unset_session_property(
+        $session,
         "invocation_call_req_id_$invoc_req_id",
     );
 
@@ -231,13 +234,13 @@ sub _receive_YIELD {
         die "Unrecognized YIELD request ID ($invoc_req_id)!"
     }
 
-    my $orig_tpt = $self->{'_state'}->unset_transport_property(
-        $tpt,
-        "invocation_call_tpt_$invoc_req_id",
+    my $orig_session = $self->{'_state'}->unset_session_property(
+        $session,
+        "invocation_call_session_$invoc_req_id",
     );
 
     $self->_send_RESULT(
-        $orig_tpt,
+        $orig_session,
         $orig_req_id,
         {}, #TODO
         $msg->get('Arguments'),
@@ -248,10 +251,10 @@ sub _receive_YIELD {
 }
 
 sub _send_RESULT {
-    my ($self, $tpt, $req_id, $details, $args_ar, $args_hr) = @_;
+    my ($self, $session, $req_id, $details, $args_ar, $args_hr) = @_;
 
     return $self->_create_and_send_msg(
-        $tpt,
+        $session,
         'RESULT',
         $req_id,
         $details,

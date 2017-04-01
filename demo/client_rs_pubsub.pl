@@ -37,12 +37,12 @@ die "[$!][$@]" if !$inet;
 
 $inet->autoflush(1);
 
-use IO::Framed::Blocking ();
+use IO::Framed::ReadWrite::Blocking ();
 
 use Net::WAMP::RawSocket::Client ();
 
 my $rs = Net::WAMP::RawSocket::Client->new(
-    io => IO::Framed::Blocking->new( $inet, $inet ),
+    io => IO::Framed::ReadWrite::Blocking->new( $inet ),
     serialization => 'json',
 );
 

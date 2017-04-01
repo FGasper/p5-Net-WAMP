@@ -23,6 +23,8 @@ BEGIN {
     $Net::WAMP::Role::Base::Client::Features::FEATURES{'callee'}{'features'}{'progressive_call_results'} = $Types::Serialiser::true;
 }
 
+#----------------------------------------------------------------------
+
 sub send_REGISTER {
     my ($self, $opts_hr, $uri) = @_;
 

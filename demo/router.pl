@@ -34,7 +34,7 @@ use Carp::Always;
 
 die "Need [ip:]port!" if !$port;
 
-use IO::Framed::NonBlocking ();
+use IO::Framed::ReadWrite::NonBlocking ();
 
 use IO::Socket::INET;
 my $server = IO::Socket::INET->new(
@@ -53,7 +53,6 @@ use IO::Select;
 my $select = IO::Select->new( $server );
 
 my %fd_io;
-my %io_fh;
 
 my $router = MyRouter->new();
 
@@ -65,11 +64,10 @@ my %fd_sess;
 
 #TODO handle select exception events
 while (1) {
-    my @to_write = grep { $_->get_write_queue_size() } values %fd_io;
-    $_ = $io_fh{$_} for @to_write;
+    my @to_write = grep { $_->get_write_queue_count() } values %fd_io;
+    $_ = $_->get_read_fh() for @to_write;
 
-use Data::Dumper;
-print STDERR Dumper("to write", \%fd_io, @to_write) if @to_write;
+#print STDERR Dumper("to write", \%fd_io, @to_write) if @to_write;
     my $wselect = @to_write ? IO::Select->new(@to_write) : undef;
 #print STDERR Dumper('wsel', $wselect, \%fd_sess);
 use Data::Dumper;
@@ -79,17 +77,13 @@ use Data::Dumper;
 
     if (!$rdrs_ar) {
 #print STDERR "timeout\n";
-next;
-print STDERR Dumper('heartbeat', \%fd_sess);
+#next;
+#print STDERR Dumper('heartbeat', \%fd_sess);
         for my $sess (values %fd_sess) {
             next if !$sess->{'heartbeat'};
             $sess->{'heartbeat'}->();
 
-            if ( $sess->{'type'} eq 'websocket' ) {
-                for ( 1 .. $sess->{'xport'}->get_write_queue_size() ) {
-                    $sess->{'io'}->enqueue_write( $sess->{'xport'}->shift_write_queue()->to_bytes() );
-                }
-            }
+            $sess->{'io'}->flush_write_queue();
         }
 
         next;
@@ -103,7 +97,6 @@ print STDERR Dumper('heartbeat', \%fd_sess);
 
   FH:
     for my $fh (@$rdrs_ar) {
-printf STDERR "read: %d\n", fileno $fh;
         if ($fh == $server) {
             accept( my $connection, $server );
 
@@ -115,6 +108,8 @@ printf STDERR "read: %d\n", fileno $fh;
         #A successful connection creates an IO object.
         elsif (my $sess = $fd_sess{fileno $fh}) {
             my $msg;
+
+            my $suppress_collect;
 
             try {
                 if ($sess->{'type'} eq 'websocket') {
@@ -137,6 +132,8 @@ printf STDERR "read: %d\n", fileno $fh;
                         $sess->{'session'} = Net::WAMP::Session->new(
                             $sess->{'xport'}->get_serialization(),
                         );
+
+                        $suppress_collect = 1;
                     }
                 }
                 else { die "huh?" }
@@ -160,7 +157,9 @@ printf STDERR "read: %d\n", fileno $fh;
                 $router->route_message($msg, $sess->{'session'});
             }
 
-            _collect_session_messages();
+            if (!$suppress_collect) {
+                _collect_session_messages();
+            }
         }
 
         #No IO object? Then something’s wrong!
@@ -189,8 +188,8 @@ printf STDERR "read: %d\n", fileno $fh;
                 Module::Load::load('Net::WebSocket::Parser');
 
                 IO::SigGuard::sysread( $fh, my $buf, 32768 ) or die $!; #XXX
-use Data::Dumper;
-print STDERR Dumper('WebSocket headers received', $buf);
+#use Data::Dumper;
+#print STDERR Dumper('WebSocket headers received', $buf);
 
                 $fd_sess{fileno $fh} = {
                     type => 'websocket',
@@ -222,7 +221,6 @@ sub _remove_fh_session {
 
     if (my $sess = delete $fd_sess{fileno $fh}) {
         $router->forget_session($sess->{'session'});
-        delete $io_fh{$sess->{'io'}};
     }
 
     close $fh;
@@ -241,7 +239,7 @@ sub _collect_session_messages {
                     payload_sr => \$serlzd,
                 );
 
-                $sess->{'io'}->enqueue_write( $frame->to_bytes() );
+                $sess->{'io'}->write( $frame->to_bytes() );
             }
         }
     }
@@ -250,9 +248,8 @@ sub _collect_session_messages {
 sub _create_io {
     my ($fh) = @_;
 
-    my $io = IO::Framed::NonBlocking->new($fh, $fh);
+    my $io = IO::Framed::ReadWrite::NonBlocking->new($fh, $fh);
     $fd_io{fileno $fh} = $io;
-    $io_fh{$io} = $fh;
     return $io;
 }
 
@@ -281,11 +278,12 @@ sub _consume_handshake {
         subprotocols => [ "wamp.2.$serialization" ],  #XXX FIXME
     );
 
-    my $ep = Net::WebSocket::Endpoint::Server->new(
-        parser => Net::WebSocket::Parser->new($fh),
-    );
-
     my $io = _create_io($fh);
+
+    my $ep = Net::WebSocket::Endpoint::Server->new(
+        parser => Net::WebSocket::Parser->new($io),
+        out => $io,
+    );
 
     @{$sess_hr}{ 'xport', 'io', 'heartbeat', 'session' } = (
         $ep,
@@ -294,7 +292,7 @@ sub _consume_handshake {
         Net::WAMP::Session->new($serialization),
     );
 
-    $io->enqueue_write($hsk->create_header_text() . "\x0d\x0a");
+    $io->write($hsk->create_header_text() . "\x0d\x0a");
 
     return;
 }

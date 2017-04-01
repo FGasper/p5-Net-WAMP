@@ -41,8 +41,6 @@ sub new {
             $class->OTHER_CONSTRUCTOR_OPTS(),
         ),
 
-        _io_is_blocking => $opts{'io'}->blocking(),
-
         _ping_store => Net::WAMP::RawSocket::PingStore->new(),
     };
 
@@ -86,32 +84,22 @@ sub get_next_message {
             }
         }
 
-        if ($msg_size) {
-            $msg_body_r = \$self->{'_io'}->read($msg_size);
+        $msg_body_r = \$self->{'_io'}->read($msg_size);
+use Data::Dumper;
+print STDERR Dumper( 'received-rs', $$msg_body_r );
+
+        if ($msg_type_code == MSG_TYPE_REGULAR()) {
 
             #Partial reads should (?) be very rare, so not
             #bothering to optimize for now.
-            if (length $$msg_body_r) {
+            if (!$msg_size || length $$msg_body_r) {
                 $self->{'_msg_size'} = 0;
 
                 #It’s a bit less-than-tidy to commingle the “endpoint”
                 #behavior (e.g., ping/pong) with the message parsing,
                 #but it can be refactored later if that’s an issue.
 
-                if ($msg_type_code == MSG_TYPE_REGULAR()) {
-                    return bless $msg_body_r, 'Net::WAMP::RawSocket::Message::Regular';
-                }
-                elsif ($msg_type_code == MSG_TYPE_PING()) {
-                    $self->_send_frame(MSG_TYPE_PONG, $$msg_body_r);
-                    redo MESSAGE;
-                }
-                elsif ($msg_type_code == MSG_TYPE_PONG()) {
-                    $self->{'_ping_store'}->remove($$msg_body_r);
-                    redo MESSAGE;
-                }
-                else {
-                    die "Huh?? Unknown message type: [$msg_type_code]";
-                }
+                return bless $msg_body_r, 'Net::WAMP::RawSocket::Message::Regular';
             }
             else {
                 @{$self}{ '_msg_class_cr', '_msg_type_code', '_msg_size' } = (
@@ -122,6 +110,17 @@ sub get_next_message {
             }
 
             return undef;
+        }
+        elsif ($msg_type_code == MSG_TYPE_PING()) {
+            $self->_send_frame(MSG_TYPE_PONG, $$msg_body_r);
+            redo MESSAGE;
+        }
+        elsif ($msg_type_code == MSG_TYPE_PONG()) {
+            $self->{'_ping_store'}->remove($$msg_body_r);
+            redo MESSAGE;
+        }
+        else {
+            die "Huh?? Unknown message type: [$msg_type_code]";
         }
     }
 
@@ -186,13 +185,7 @@ sub _read_header {
 sub _send_bytes {
     my ($self) = @_;    #bytes, callback
 
-    if ( $self->{'_io_is_blocking'} ) {
-        $self->{'_io'}->write($_[1]);
-        $_[2]->() if $_[2];
-    }
-    else {
-        $self->{'_io'}->enqueue_write( @_[ 1 .. $#_ ] );
-    }
+    $self->{'_io'}->write(@_[1 .. $#_]);
 
     return;
 }

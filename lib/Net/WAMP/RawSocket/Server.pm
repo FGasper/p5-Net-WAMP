@@ -35,6 +35,8 @@ sub receive_and_answer_handshake {
                 $self->_set_handshake_done();
             },
         );
+use Data::Dumper;
+#print STDERR Dumper('queued handshake response', $self);
 
         return 1;
 

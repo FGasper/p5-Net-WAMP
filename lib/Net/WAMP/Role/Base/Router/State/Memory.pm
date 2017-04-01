@@ -8,7 +8,7 @@ package Net::WAMP::Role::Base::Router::State::Memory;
 # and should accommodate a forking server.
 #
 # At the same time, what would the advantage of a forking server be?
-# Anyway, if nothing else it’s a nice abstraaction. So, here’s this.
+# Anyway, if nothing else it’s a nice abstraction. So, here’s this.
 #----------------------------------------------------------------------
 
 use strict;

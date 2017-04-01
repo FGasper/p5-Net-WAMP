@@ -17,7 +17,6 @@ WriteMakefile(
         'autodie'                  => 0,
         'parent'                   => 0,
         'X::Tiny'   => 0,
-        'IO::SigGuard' => 0,
         'Module::Load'  => 0,
         'Try::Tiny' => 0,
         'Types::Serialiser' => 0,

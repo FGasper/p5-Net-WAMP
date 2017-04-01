@@ -80,8 +80,7 @@ sub new {
     my ($class, %opts) = @_;
 
     my $self = {
-        _session => Net::WAMP::Session->new( $opts{'serialization'} ),
-        _write_queue => [],
+        _session => $opts{'session'} || die 'Need “session”!',
     };
 
     return bless $self, $class;
@@ -205,10 +204,7 @@ sub _send_msg {
         1;
     };
 
-    #XXX TODO use session write queue
-
-    #$self->{'tpt'}->write_wamp_message($msg);
-    push @{ $self->{'_write_queue'} }, $self->{'_session'}->message_object_to_bytes($msg);
+    $self->{'_session'}->enqueue_message_to_send($msg);
 
     return;
 }

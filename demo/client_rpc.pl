@@ -14,7 +14,7 @@ use parent qw(
     Net::WAMP::Role::Callee
 );
 
-use JSON;
+use IO::Framed::ReadWrite::Blocking ();
 
 #sub on_EVENT {
 #    my ($self, $msg) = @_;
@@ -34,7 +34,7 @@ sub on_INVOCATION {
         die "Unknown RPC procedure: “$procedure”";
     }
 
-    $worker->yield( {}, [ $method_cr->($self, $msg) ] );
+    my $yld = $worker->yield( {}, [ $method_cr->($self, $msg) ] );
 
     return;
 }
@@ -55,7 +55,7 @@ package main;
 my $host_port = $ARGV[0] or die "Need [host:]port!";
 substr($host_port, 0, 0) = 'localhost:' if -1 == index($host_port, ':');
 
-use Net::WAMP::Transport::WebSocket::Client ();
+use Net::WAMP::RawSocket::Client ();
 
 use IO::Socket::INET ();
 #my $inet = IO::Socket::INET->new('demo.crossbar.io:80');
@@ -65,37 +65,75 @@ my $inet = IO::Socket::INET->new(
 );
 die "[$!][$@]" if !$inet;
 
-my $wio = Net::WAMP::Transport::WebSocket::Client->new( $inet, $inet );
+my $rs = Net::WAMP::RawSocket::Client->new(
+    io => IO::Framed::ReadWrite::Blocking->new( $inet ),
 
-$wio->handshake( 'wss://demo.crossbar.io/ws', 'json' );
+    #RawSocket needs this to do the handshake.
+    serialization => 'json',
+);
 
-my $client = WAMP_Client->new( transport => $wio );
+$rs->send_handshake();
+$rs->verify_handshake();
 
-$client->send_HELLO(
+#----------------------------------------------------------------------
+use Carp::Always;
+
+my $session = Net::WAMP::Session->new('json');
+
+my $client = WAMP_Client->new(
+    #serialization => 'json',
+    session => $session,
+);
+
+sub _send {
+    my $create_func = "send_" . shift;
+    $client->$create_func(@_);
+    _flush_session();
+
+    return;
+}
+
+sub _flush_session {
+    while ( my $buf = $session->shift_message_queue() ) {
+        $rs->send_message($buf);
+    }
+}
+
+my $got_msg;
+
+sub _receive {
+    1 until $got_msg = $rs->get_next_message();
+    my $resp = $client->handle_message($got_msg->get_payload());
+    _flush_session();
+    return $resp;
+}
+
+_send(
+    'HELLO',
     'felipes_demo', #'myrealm',
 );
 
 use Data::Dumper;
 print STDERR "RECEIVING …\n";
-print Dumper($client->handle_next_message());
+print Dumper(_receive());
 print STDERR "RECEIVED …\n";
 
 #----------------------------------------------------------------------
 
-$client->send_REGISTER( {}, 'com.myapp.sum' );
+_send('REGISTER', {}, 'com.myapp.sum' );
 
 #REGISTERED
-my $reg_obj = $client->handle_next_message();
+my $reg_obj = _receive();
 my $reg_id = $reg_obj->get('Registration');
 print Dumper($reg_obj);
 
-$client->send_CALL( {}, 'com.myapp.sum', [2, 7, 3] );
+_send('CALL', {}, 'com.myapp.sum', [2, 7, 3] );
 
 #INVOCATION
-print Dumper($client->handle_next_message());
+print Dumper(_receive());
 
 #RESULT
-print Dumper($client->handle_next_message());
+print Dumper(_receive());
 
 #----------------------------------------------------------------------
 

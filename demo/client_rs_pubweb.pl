@@ -27,7 +27,9 @@ if (@ARGV < 2) {
 
 use Carp::Always;
 
-use Net::WAMP::Transport::RawSocket::Client ();
+use IO::Framed::ReadWrite::Blocking ();
+
+use Net::WAMP::RawSocket::Client ();
 
 use IO::Socket::INET ();
 #my $inet = IO::Socket::INET->new('demo.crossbar.io:80');
@@ -36,20 +38,44 @@ die "[$!][$@]" if !$inet;
 
 $inet->autoflush(1);
 
-my $wio = Net::WAMP::Transport::RawSocket::Client->new( $inet, $inet );
+my $rs = Net::WAMP::RawSocket::Client->new(
+    io => IO::Framed::ReadWrite::Blocking->new( $inet ),
+    serialization => 'json',
+);
 
-$wio->handshake();
+print STDERR "send hs\n";
+$rs->send_handshake();
+print STDERR "sent hs\n";
+$rs->verify_handshake();
+print STDERR "vf hs\n";
 
-my $client = WAMP_Client->new( transport => $wio );
+my $client = WAMP_Client->new(
+    serialization => 'json',
+);
 
-$client->send_HELLO( 'com.felipe.demo' );
+sub _send {
+    my $create_func = "send_" . shift;
+    $rs->send_message( $client->message_object_to_bytes( $client->$create_func(@_) ) );
+
+    return;
+}
+
+my $got_msg;
+
+sub _receive {
+    1 until $got_msg = $rs->get_next_message();
+    return $client->handle_message($got_msg->get_payload());
+}
+
+_send( 'HELLO', 'com.felipe.demo' );
 
 use Data::Dumper;
 print STDERR "RECEIVING …\n";
-print Dumper($client->handle_next_message());
+print Dumper(_receive());
 print STDERR "RECEIVED …\n";
 
-$client->send_PUBLISH(
+_send(
+    'PUBLISH',
     {},
     'com.felipe.demo.chat',
     [ shift(@ARGV), "@ARGV" ],
