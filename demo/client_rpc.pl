@@ -16,13 +16,6 @@ use parent qw(
 
 use IO::Framed::ReadWrite::Blocking ();
 
-#sub on_EVENT {
-#    my ($self, $msg) = @_;
-#
-#    #print JSON::encode_json( $msg->to_unblessed() ), $/;
-#    print JSON::encode_json( $msg ), $/;
-#}
-
 sub on_INVOCATION {
     my ($self, $msg, $procedure, $worker) = @_;
 
@@ -32,6 +25,13 @@ sub on_INVOCATION {
     my $method_cr = $self->can("RPC_$proc_snake");
     if (!$method_cr) {
         die "Unknown RPC procedure: “$procedure”";
+    }
+
+    if ($msg->caller_can_receive_progress()) {
+print STDERR "caller can progress\n";
+use Data::Dumper;
+print STDERR Dumper $msg;
+        $worker->yield_progress( {}, [ $method_cr->($self, $msg) ] );
     }
 
     my $yld = $worker->yield( {}, [ $method_cr->($self, $msg) ] );
@@ -67,51 +67,27 @@ die "[$!][$@]" if !$inet;
 
 my $rs = Net::WAMP::RawSocket::Client->new(
     io => IO::Framed::ReadWrite::Blocking->new( $inet ),
-
-    #RawSocket needs this to do the handshake.
-    serialization => 'json',
 );
 
-$rs->send_handshake();
+$rs->send_handshake( serialization => 'json' );
 $rs->verify_handshake();
 
 #----------------------------------------------------------------------
 use Carp::Always;
 
-my $session = Net::WAMP::Session->new('json');
-
 my $client = WAMP_Client->new(
-    #serialization => 'json',
-    session => $session,
+    serialization => 'json',
+    on_send => sub { $rs->send_message($_[0]) },
 );
-
-sub _send {
-    my $create_func = "send_" . shift;
-    $client->$create_func(@_);
-    _flush_session();
-
-    return;
-}
-
-sub _flush_session {
-    while ( my $buf = $session->shift_message_queue() ) {
-        $rs->send_message($buf);
-    }
-}
 
 my $got_msg;
 
 sub _receive {
-    1 until $got_msg = $rs->get_next_message();
-    my $resp = $client->handle_message($got_msg->get_payload());
-    _flush_session();
-    return $resp;
+    $got_msg = $rs->get_next_message();
+    return $client->handle_message($got_msg->get_payload());
 }
 
-_send(
-    'HELLO',
-    'felipes_demo', #'myrealm',
-);
+$client->send_HELLO( 'felipes_demo' ); #'myrealm',
 
 use Data::Dumper;
 print STDERR "RECEIVING …\n";
@@ -120,20 +96,27 @@ print STDERR "RECEIVED …\n";
 
 #----------------------------------------------------------------------
 
-_send('REGISTER', {}, 'com.myapp.sum' );
+$client->send_REGISTER( {}, 'com.myapp.sum' );
 
 #REGISTERED
 my $reg_obj = _receive();
 my $reg_id = $reg_obj->get('Registration');
 print Dumper($reg_obj);
 
-_send('CALL', {}, 'com.myapp.sum', [2, 7, 3] );
+$client->send_CALL(
+    { receive_progress => Types::Serialiser::true() },
+    'com.myapp.sum',
+    [2, 7, 3],
+);
 
 #INVOCATION
 print Dumper(_receive());
 
 #RESULT
-print Dumper(_receive());
+while ( my $msg = _receive() ) {
+    print Dumper($msg);
+    last if !$msg->is_progress();
+}
 
 #----------------------------------------------------------------------
 

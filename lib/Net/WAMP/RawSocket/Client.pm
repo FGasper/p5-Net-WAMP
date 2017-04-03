@@ -8,23 +8,18 @@ use parent 'Net::WAMP::RawSocket';
 use Net::WAMP::RawSocket::Constants ();
 use Net::WAMP::X ();
 
-use constant OTHER_CONSTRUCTOR_OPTS => (
-    __PACKAGE__->OTHER_CONSTRUCTOR_OPTS(),
-    'serialization',
-);
-
 sub new {
     my ($class, @args) = @_;
 
     my $self = $class->SUPER::new(@args);
 
-    $self->{'_serialization'} ||= Net::WAMP::RawSocket::Constants::DEFAULT_SERIALIZATION();
-
     return $self;
 }
 
 sub send_handshake {
-    my ($self) = @_;
+    my ($self, %opts) = @_;
+
+    $self->{'_serialization'} = $opts{'serialization'} || Net::WAMP::RawSocket::Constants::DEFAULT_SERIALIZATION();
 
     if ($self->{'_enqueued_handshake'}) {
         die "Already!"; #XXX

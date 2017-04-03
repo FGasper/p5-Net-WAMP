@@ -1,5 +1,16 @@
 #!/usr/bin/env perl
 
+#======================================================================
+# XXX XXX XXX
+#
+# This is NOT a robust, reliable router … it’s rather a hackneyed,
+# bare-bones example to demonstrate the basics of what such an
+# application might look like using Net::WAMP, mostly for testing.
+#
+# It doesn’t tolerate error conditions well. It might have memory leaks.
+#
+#======================================================================
+
 #----------------------------------------------------------------------
 package MyRouter;
 
@@ -117,7 +128,7 @@ use Data::Dumper;
                         $msg = $sess->{'xport'}->get_next_message();
                     }
                     else {
-                        _consume_handshake($fh, $sess);
+                        _consume_ws_handshake($fh, $sess);
                     }
                 }
                 elsif ($sess->{'type'} eq 'rawsocket') {
@@ -130,10 +141,11 @@ use Data::Dumper;
                         $sess->{'did_handshake'} = 1;
 
                         $sess->{'session'} = Net::WAMP::Session->new(
-                            $sess->{'xport'}->get_serialization(),
+                            serialization => $sess->{'xport'}->get_serialization(),
+                            on_send => sub {
+                                $sess->{'xport'}->send_message($_[0]),
+                            },
                         );
-
-                        $suppress_collect = 1;
                     }
                 }
                 else { die "huh?" }
@@ -155,10 +167,6 @@ use Data::Dumper;
             if ($msg) {
                 $msg = $sess->{'session'}->message_bytes_to_object($msg->get_payload());
                 $router->route_message($msg, $sess->{'session'});
-            }
-
-            if (!$suppress_collect) {
-                _collect_session_messages();
             }
         }
 
@@ -187,7 +195,10 @@ use Data::Dumper;
                 Module::Load::load('Net::WebSocket::Endpoint::Server');
                 Module::Load::load('Net::WebSocket::Parser');
 
-                IO::SigGuard::sysread( $fh, my $buf, 32768 ) or die $!; #XXX
+                IO::SigGuard::sysread( $fh, my $buf, 32768 ) or do {;
+                    die $! if $!; #XXX
+                    die "Filehandle is closed!";    #XXX TODO
+                };
 #use Data::Dumper;
 #print STDERR Dumper('WebSocket headers received', $buf);
 
@@ -196,7 +207,7 @@ use Data::Dumper;
                     hsk_buf => $buf,
                 };
 
-                _consume_handshake($fh, $fd_sess{fileno $fh});
+                _consume_ws_handshake($fh, $fd_sess{fileno $fh});
 
                 #die 'No WebSocket yet …';
                 #$tpt = Net::WAMP::Transport::WebSocket::Server->new( ($conn) x 2 );
@@ -226,34 +237,15 @@ sub _remove_fh_session {
     close $fh;
 }
 
-sub _collect_session_messages {
-    for my $sess (values %fd_sess) {
-        while (my $serlzd = $sess->{'session'}->shift_message_queue()) {
-            if ($sess->{'type'} eq 'rawsocket') {
-                $sess->{'xport'}->send_message($serlzd);
-            }
-            else {
-                #XXX FIXME
-                use Net::WebSocket::Frame::text ();
-                my $frame = Net::WebSocket::Frame::text->new(
-                    payload_sr => \$serlzd,
-                );
-
-                $sess->{'io'}->write( $frame->to_bytes() );
-            }
-        }
-    }
-}
-
 sub _create_io {
     my ($fh) = @_;
 
-    my $io = IO::Framed::ReadWrite::NonBlocking->new($fh, $fh);
+    my $io = IO::Framed::ReadWrite::NonBlocking->new($fh);
     $fd_io{fileno $fh} = $io;
     return $io;
 }
 
-sub _consume_handshake {
+sub _consume_ws_handshake {
     my ($fh, $sess_hr) = @_;
 
     use IO::SigGuard ();
@@ -280,19 +272,35 @@ sub _consume_handshake {
 
     my $io = _create_io($fh);
 
+    $io->write($hsk->create_header_text() . "\x0d\x0a");
+
     my $ep = Net::WebSocket::Endpoint::Server->new(
         parser => Net::WebSocket::Parser->new($io),
         out => $io,
     );
 
+    my $ws_data_type;
+
+    my $session = Net::WAMP::Session->new(
+        serialization => $serialization,
+        on_send => sub {
+            my $frame = "Net::WebSocket::Frame::$ws_data_type"->new(
+                payload_sr => \$_[0],
+            );
+
+            $io->write( $frame->to_bytes() ),
+        },
+    );
+
+    $ws_data_type = $session->get_websocket_data_type();
+    Module::Load::load( "Net::WebSocket::Frame::$ws_data_type" );
+
     @{$sess_hr}{ 'xport', 'io', 'heartbeat', 'session' } = (
         $ep,
         $io,
         sub { $ep->check_heartbeat() },
-        Net::WAMP::Session->new($serialization),
+        $session,
     );
-
-    $io->write($hsk->create_header_text() . "\x0d\x0a");
 
     return;
 }

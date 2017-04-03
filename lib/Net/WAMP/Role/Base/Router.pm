@@ -32,10 +32,14 @@ sub route_message {
 
     my ($handler_cr, $handler2_cr) = $self->_get_message_handlers($msg);
 
+    local $self->{'_prevent_custom_handler'};
+
+use Data::Dumper;
+print STDERR Dumper('route', $msg);
     my @extra_args = $handler_cr->( $self, $session, $msg );
 
     #Check for external method definition
-    if ($handler2_cr) {
+    if (!$self->{'_prevent_custom_handler'} && $handler2_cr) {
         $handler2_cr->( $self, $session, $msg, @extra_args );
     }
 
@@ -194,7 +198,7 @@ sub _send_msg {
     };
 print STDERR "Enqueueing for $session\n";
 
-    $session->enqueue_message_to_send($msg);
+    $session->send_message($msg);
 
     return $self;
 }
@@ -203,6 +207,9 @@ print STDERR "Enqueueing for $session\n";
 
 sub _create_and_send_ERROR {
     my ($self, $session, $subtype, @args) = @_;
+
+    #This is local()ed in route_message().
+    $self->{'_prevent_custom_handler'} = 1;
 
     return $self->_create_and_send_msg(
         $session,
@@ -217,17 +224,24 @@ sub _catch_exception {
 
     my $ret;
 
+    my $id = substr( rand, 2 );
+
     try {
         $ret = $todo_cr->();
     }
     catch {
+
+        #Anything we catch here is likely not something we want
+        #a client to know about.
+
+        warn "ERROR XID $id: $_";
+
         $self->_create_and_send_ERROR(
             $session,
             $req_type,
             $req_id,
-            {},
-            'net-wamp.error',
-            [ "$_" ],
+            'net_wamp.error',
+            [ "internal error (XID $id)" ],
         );
     };
 
@@ -258,6 +272,15 @@ sub _catch_pre_handshake_exception {
     };
 
     return $ret;
+}
+
+sub _receive_ERROR {
+    my ($self, $session, $msg) = @_;
+
+    my $subtype = $msg->get_request_type();
+    my $subhandler_n = "_receive_ERROR_$subtype";
+
+    return $self->$subhandler_n($session, $msg);
 }
 
 #----------------------------------------------------------------------

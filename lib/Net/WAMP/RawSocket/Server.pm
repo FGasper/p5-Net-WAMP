@@ -25,7 +25,7 @@ sub receive_and_answer_handshake {
 
         $self->_send_bytes(
             pack(
-                'C*',
+                'C4',
                 Net::WAMP::RawSocket::Constants::MAGIC_FIRST_OCTET(),
                 ($max_len_code << 4) | $serializer_code,
                 0, 0,   #reserved
@@ -35,8 +35,6 @@ sub receive_and_answer_handshake {
                 $self->_set_handshake_done();
             },
         );
-use Data::Dumper;
-#print STDERR Dumper('queued handshake response', $self);
 
         return 1;
 

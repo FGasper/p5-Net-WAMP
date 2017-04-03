@@ -40,42 +40,34 @@ $inet->autoflush(1);
 
 my $rs = Net::WAMP::RawSocket::Client->new(
     io => IO::Framed::ReadWrite::Blocking->new( $inet ),
-    serialization => 'json',
 );
 
 print STDERR "send hs\n";
-$rs->send_handshake();
+$rs->send_handshake( serialization => 'json' );
 print STDERR "sent hs\n";
 $rs->verify_handshake();
 print STDERR "vf hs\n";
 
 my $client = WAMP_Client->new(
     serialization => 'json',
+    on_send => sub { $rs->send_message($_[0]) },
 );
-
-sub _send {
-    my $create_func = "send_" . shift;
-    $rs->send_message( $client->message_object_to_bytes( $client->$create_func(@_) ) );
-
-    return;
-}
 
 my $got_msg;
 
 sub _receive {
-    1 until $got_msg = $rs->get_next_message();
+    $got_msg = $rs->get_next_message();
     return $client->handle_message($got_msg->get_payload());
 }
 
-_send( 'HELLO', 'com.felipe.demo' );
+$client->send_HELLO( 'com.felipe.demo' );
 
 use Data::Dumper;
 print STDERR "RECEIVING …\n";
 print Dumper(_receive());
 print STDERR "RECEIVED …\n";
 
-_send(
-    'PUBLISH',
+$client->send_PUBLISH(
     {},
     'com.felipe.demo.chat',
     [ shift(@ARGV), "@ARGV" ],

@@ -4,7 +4,7 @@ use JSON ();
 
 use constant {
     serialization => 'json',
-    websocket_message_type => 'text',
+    websocket_data_type => 'text',
 };
 
 #The following have trouble dealing with anything that isn’t UTF-8;

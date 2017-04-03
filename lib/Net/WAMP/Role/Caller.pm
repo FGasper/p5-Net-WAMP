@@ -33,7 +33,21 @@ sub send_CALL {
         @args,
     );
 
-    return $self->{'_sent_CALL'}{ $msg->get('Request') } = $msg;
+    $self->{'_sent_CALL'}{ $msg->get('Request') } = $msg;
+
+    return $msg;
+}
+
+sub _receive_ERROR_CALL {
+    my ($self, $msg) = @_;
+
+    my $orig_msg = delete $self->{'_sent_CALL'}{ $msg->get('Request') };
+
+    if (!$orig_msg && $msg->get('Error') ne 'wamp.error.canceled') {
+        warn sprintf 'No tracked CALL for request ID “%s”!', $msg->get('Request');
+    }
+
+    return $orig_msg;
 }
 
 sub _receive_RESULT {
@@ -41,13 +55,15 @@ sub _receive_RESULT {
 
     my $orig_msg = $self->{'_sent_CALL'}{ $msg->get('Request') };
 
-    if (!$orig_msg) {
-        die sprintf("Received RESULT for unknown! (%s)", $msg->get('Request')); #XXX
-    }
+    #if (!$orig_msg) {
+    #    use Data::Dumper;
+    #    print STDERR Dumper $self;
+    #    die sprintf("Received RESULT for unknown! (%s)", $msg->get('Request')); #XXX
+    #}
 
     if ($msg->get('Details')->{'progress'}) {
-        if (!$orig_msg->get('Options')->{'receive_progress'}) {
-            die sprintf("Received unrequested progressive RESULT! (%s)", $msg->get('Request')); #XXX
+        if ($orig_msg && !$orig_msg->get('Options')->{'receive_progress'}) {
+            warn sprintf("Received unrequested progressive RESULT! (%s)", $msg->get('Request')); #XXX
         }
     }
     else {
@@ -61,7 +77,7 @@ sub _receive_RESULT {
 
 #Requires HELLO with roles.caller.features.call_canceling of true
 sub send_CANCEL {
-    my ($self, $req_id, $opts_hr) = @_;
+    my ($self, $opts_hr, $req_id) = @_;
 
     if (!delete $self->{'_sent_CALL'}{$req_id}) {
         die sprintf("Refuse to send CANCEL for unknown! (%s)", $req_id); #XXX
@@ -69,7 +85,7 @@ sub send_CANCEL {
 
     return $self->_create_and_send_msg(
         'CANCEL',
-        $req_id,
+        0 + $req_id,
         $opts_hr,
     );
 }

@@ -43,36 +43,29 @@ use Net::WAMP::RawSocket::Client ();
 
 my $rs = Net::WAMP::RawSocket::Client->new(
     io => IO::Framed::ReadWrite::Blocking->new( $inet ),
-    serialization => 'json',
 );
 
 use Carp::Always;
 
 print STDERR "send hs\n";
-$rs->send_handshake();
+$rs->send_handshake( serialization => 'json' );
 print STDERR "sent hs\n";
 $rs->verify_handshake();
 print STDERR "vf hs\n";
 
 my $client = WAMP_Client->new(
     serialization => 'json',
+    on_send => sub { $rs->send_message($_[0]) },
 );
-
-sub _send {
-    my $create_func = "send_" . shift;
-    $rs->send_message( $client->message_object_to_bytes( $client->$create_func(@_) ) );
-
-    return;
-}
 
 my $got_msg;
 
 sub _receive {
-    1 until $got_msg = $rs->get_next_message();
+    $got_msg = $rs->get_next_message();
     return $client->handle_message($got_msg->get_payload());
 }
 
-_send( 'HELLO', 'felipes_demo', ); #'myrealm',
+$client->send_HELLO( 'felipes_demo' ); #'myrealm',
 
 use Data::Dumper;
 print STDERR "RECEIVING …\n";
@@ -81,13 +74,12 @@ print STDERR "RECEIVED …\n";
 
 #----------------------------------------------------------------------
 
-_send( 'SUBSCRIBE', {}, 'com.myapp.hello' );
+$client->send_SUBSCRIBE( {}, 'com.myapp.hello' );
 print STDERR "sent subscribe\n";
 print Dumper(_receive());
 
 use Types::Serialiser ();
-_send(
-    'PUBLISH',
+$client->send_PUBLISH(
     {
         acknowledge => Types::Serialiser::true(),
         exclude_me => Types::Serialiser::false(),

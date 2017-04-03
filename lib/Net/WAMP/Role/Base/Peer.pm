@@ -32,6 +32,36 @@ sub _verify_handshake {
     return;
 }
 
+#or else send “wamp.error.invalid_uri”
+#WAMP’s specification gives: re.compile(r"^([^\s\.#]+\.)*([^\s\.#]+)$")
+
+sub _validate_uri {
+    my ($self, $specimen) = @_;
+
+    if ($specimen =~ m<\.\.>o) {
+        die Net::WAMP::X->create('BadURI', 'empty URI component', $specimen);
+    }
+
+    if (0 == index($specimen, '.')) {
+        die Net::WAMP::X->create('BadURI', 'initial “.”', $specimen);
+    }
+
+    if (substr($specimen, -1) eq '.') {
+        die Net::WAMP::X->create('BadURI', 'trailing “.”', $specimen);
+    }
+
+    if ($specimen =~ tr<#><>) {
+        die Net::WAMP::X->create('BadURI', '“#” is forbidden', $specimen);
+    }
+
+    #XXX https://github.com/wamp-proto/wamp-proto/issues/275
+    if ($specimen =~ m<\s>o) {
+        die Net::WAMP::X->create('BadURI', 'Whitespace is forbidden.', $specimen);
+    }
+
+    return;
+}
+
 #XXX De-duplicate TODO
 sub _create_msg {
     my ($self, $name, @parts) = @_;
@@ -42,6 +72,7 @@ sub _create_msg {
     return $mod->new(@parts);
 }
 
+#This happens during handshake.
 sub _receive_ABORT {
     my ($self, $msg) = @_;
 
@@ -49,9 +80,5 @@ sub _receive_ABORT {
 
     return;
 }
-
-#Anything can receive an ERROR or an ABORT.
-#We’ll eventually want more fine-grained ERROR handling.
-*_receive_ERROR = *_receive_ABORT;
 
 1;

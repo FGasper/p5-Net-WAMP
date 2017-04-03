@@ -7,7 +7,6 @@ use Module::Load ();
 
 use parent qw( Net::WAMP::Role::Base::Peer );
 
-use Net::WAMP::Messages ();
 use Net::WAMP::Session ();
 
 use Net::WAMP::Role::Base::Client::Features ();
@@ -80,7 +79,7 @@ sub new {
     my ($class, %opts) = @_;
 
     my $self = {
-        _session => $opts{'session'} || die 'Need “session”!',
+        _session => Net::WAMP::Session->new(%opts),
     };
 
     return bless $self, $class;
@@ -204,9 +203,18 @@ sub _send_msg {
         1;
     };
 
-    $self->{'_session'}->enqueue_message_to_send($msg);
+    $self->{'_session'}->send_message($msg);
 
     return;
+}
+
+sub _receive_ERROR {
+    my ($self, $msg) = @_;
+
+    my $subtype = $msg->get_request_type();
+    my $subhandler_n = "_receive_ERROR_$subtype";
+
+    return $self->$subhandler_n($msg);
 }
 
 sub _verify_receiver_can_accept_msg_type {

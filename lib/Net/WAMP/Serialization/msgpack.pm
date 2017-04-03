@@ -4,7 +4,7 @@ use Data::MessagePack ();
 
 use constant {
     serialization => 'msgpack',
-    websocket_message_type => 'binary',
+    websocket_data_type => 'binary',
 };
 
 sub stringify {

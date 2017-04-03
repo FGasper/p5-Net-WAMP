@@ -3,6 +3,8 @@ package Net::WAMP::Role::Broker;
 use strict;
 use warnings;
 
+use Try::Tiny;
+
 use parent qw(
   Net::WAMP::Role::Base::Router
 );
@@ -49,7 +51,7 @@ sub unsubscribe {
 
     my $topic = $self->{'_state'}->unset_realm_property($session, "subscription_topic_$subscription") or do {
         my $realm = $self->_get_realm_for_session($session);
-        die "Realm “$realm” has no subscription for ID “$subscription”!";
+        die Net::WAMP::X->create('NoSuchSubscription', $realm, $subscription);
     };
 
     $self->{'_state'}->unset_realm_deep_property(
@@ -62,14 +64,13 @@ sub unsubscribe {
 sub publish {
     my ($self, $session, $options, $topic, $args_ar, $args_hr) = @_;
 
+    $self->_validate_uri($topic);
+
     my $subscribers_hr = $self->_get_topic_subscribers($session, $topic);
-use Data::Dumper;
-print STDERR Dumper('subscribers', $subscribers_hr);
 
     my $publication = Net::WAMP::Utils::generate_global_id();
 
     for my $rcp (values %$subscribers_hr) {
-print STDERR "send to $rcp->{'session'}\n";
 
         #Implements “Publisher Exclusion” feature
         if ( $session eq $rcp->{'session'} ) {
@@ -136,12 +137,31 @@ sub _send_SUBSCRIBED {
 sub _receive_UNSUBSCRIBE {
     my ($self, $session, $msg) = @_;
 
-    $self->unsubscribe(
-        $session,
-        $msg->get('Subscription'),
-    );
+    try {
+        $self->unsubscribe(
+            $session,
+            $msg->get('Subscription'),
+        );
 
-    $self->_send_UNSUBCRIBED( $session, $msg->get('Request') );
+        $self->_send_UNSUBSCRIBED( $session, $msg->get('Request') );
+    }
+    catch {
+        if ( try { $_->isa('Net::WAMP::X::NoSuchSubscription') } ) {
+            $self->_create_and_send_ERROR(
+                $session,
+                'UNSUBSCRIBE',
+                $msg->get('Request'),
+                {
+                    net_wamp_message => $_->get_message(),
+                },
+                'wamp.error.no_such_subscription',
+            );
+        }
+        else {
+            local $@ = $_;
+            die;
+        }
+    };
 
     return;
 }
@@ -159,23 +179,42 @@ sub _send_UNSUBSCRIBED {
 sub _receive_PUBLISH {
     my ($self, $session, $msg) = @_;
 
-    my $publication = $self->publish(
-        $session,
-        map { $msg->get($_) } qw(
-            Options
-            Topic
-            Arguments
-            ArgumentsKw
-        ),
-    );
-
-    if (Types::Serialiser::is_true($msg->get('Options')->{'acknowledge'})) {
-        $self->_send_PUBLISHED(
+    try {
+        my $publication = $self->publish(
             $session,
-            $msg->get('Request'),
-            $publication,
+            map { $msg->get($_) } qw(
+                Options
+                Topic
+                Arguments
+                ArgumentsKw
+            ),
         );
+
+        if (Types::Serialiser::is_true($msg->get('Options')->{'acknowledge'})) {
+            $self->_send_PUBLISHED(
+                $session,
+                $msg->get('Request'),
+                $publication,
+            );
+        }
     }
+    catch {
+        if ( try { $_->isa('Net::WAMP::X::BadURI') } ) {
+            $self->_create_and_send_ERROR(
+                $session,
+                'PUBLISH',
+                $msg->get('Request'),
+                {
+                    net_wamp_message => $_->get_message(),
+                },
+                'wamp.error.invalid_uri',
+            );
+        }
+        else {
+            local $@ = $_;
+            die;
+        }
+    };
 
     return;
 }

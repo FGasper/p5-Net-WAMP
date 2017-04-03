@@ -11,7 +11,7 @@ Net::WAMP::RawSocket::Check
 
 =head1 SYNOPSIS
 
-    my $is_rawsocket = Net::WAMP::Transport::CheckSocket::is_rawsocket($fh);
+    my $is_rawsocket = Net::WAMP::RawSocket::Check::is_rawsocket($fh);
 
 =head1 DESCRIPTION
 

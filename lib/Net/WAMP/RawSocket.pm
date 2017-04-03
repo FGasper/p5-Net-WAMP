@@ -85,8 +85,8 @@ sub get_next_message {
         }
 
         $msg_body_r = \$self->{'_io'}->read($msg_size);
-use Data::Dumper;
-print STDERR Dumper( 'received-rs', $$msg_body_r );
+
+        #print STDERR "received-rs/$$ $$msg_body_r\n";
 
         if ($msg_type_code == MSG_TYPE_REGULAR()) {
 
@@ -158,18 +158,20 @@ sub get_max_receive_length {
 
 #----------------------------------------------------------------------
 
-sub _send_frame {
-    my ($self, $type_num) = @_;
-
-    _prefix_header( $type_num, $_[2] );
-
-    $self->_send_bytes( @_[ 2 .. $#_ ] );
+sub _set_handshake_done {
+    $_[0]->{'_handshake_ok'} = 1;
 
     return;
 }
 
-sub _set_handshake_done {
-    $_[0]->{'_handshake_ok'} = 1;
+sub _send_frame {
+    my ($self, $type_num) = @_;
+
+    #print STDERR "rs-write/$$: $_[2]\n";
+
+    _prefix_header( $type_num, $_[2] );
+
+    $self->_send_bytes( @_[ 2 .. $#_ ] );
 
     return;
 }
