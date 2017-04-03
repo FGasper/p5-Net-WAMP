@@ -166,7 +166,7 @@ use Data::Dumper;
             #transport-agnostic
             if ($msg) {
                 $msg = $sess->{'session'}->message_bytes_to_object($msg->get_payload());
-                $router->route_message($msg, $sess->{'session'});
+                $router->handle_message($msg, $sess->{'session'});
             }
         }
 

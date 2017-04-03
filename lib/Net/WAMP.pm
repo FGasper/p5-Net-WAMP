@@ -89,8 +89,8 @@ and you should absolutely check the changelog before updating.
 =head2 Roles
 
 The role classes contain the role-specific logic for packaging and parsing
-WAMP messages. This is where you can add your own custom handling of
-received messages.
+WAMP messages. Use multiple inheritance to govern which roles your application
+will execute.
 
 Your application will need to subclass one or more of the provided roles.
 A given class must implement either client or router roles, but NOT both:
@@ -129,27 +129,30 @@ documentation for variances from that pattern.
 =head2 I/O
 
 To maximize flexibility, Net::WAMP does not read or write directly to
-filehandles; instead, it accepts serialized messages (via F<Client.pm>’s
+filehandles; instead, it accepts serialized messages (via the
 C<handle_message()> method) and sends serialized messaged to a callback
-function (C<on_send>) on the Session object.
+function (C<on_send>).
 
 For example, if you’re doing WAMP over WebSocket, you’ll feed each
-WebSocket message’s payload into C<handle_message()> and set the
-Session object’s C<on_send> to write its passed payload to WebSocket.
+WebSocket message’s payload into C<handle_message()> and set
+C<on_send> to write its passed payload to WebSocket.
 
 The expectation is that whatever transport layer you have underneath
 WAMP—WebSocket, “L<RawSocket|Net::WAMP::RawSocket>”, or what have
 you—receives data in the appropriate message chunks already
 (see L<IO::Framed> for an example) and can “do the needful” with a
-serialized message to send. This even makes it possible to nest WAMP within
+serialized message to send. This makes it possible to nest WAMP within
 some other transport mechanism—even another messaging protocol!
 
 =head3 WAMP “RawSocket”
 
 Net::WAMP includes a full implementation of WAMP’s “RawSocket” protocol
-in L<RawSocket|Net::WAMP::RawSocket>. This protocol is much simpler than
+in L<Net::WAMP::RawSocket>. This protocol is simpler than
 WebSocket and is probably a better choice for communication between any
-two WAMP nodes that can speak simple TCP.
+two WAMP nodes that can speak simple TCP. One limitation it imposes is a
+hard upper limit on message size: if you think you might want to transmit
+single messages of over 8 MiB, you’ll need some other transport mechanism
+besides RawSocket.
 
 =head3 Serializations
 

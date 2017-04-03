@@ -27,7 +27,7 @@ sub new {
     }, $class;
 }
 
-sub route_message {
+sub handle_message {
     my ($self, $msg, $session) = @_;
 
     my ($handler_cr, $handler2_cr) = $self->_get_message_handlers($msg);
@@ -208,7 +208,7 @@ print STDERR "Enqueueing for $session\n";
 sub _create_and_send_ERROR {
     my ($self, $session, $subtype, @args) = @_;
 
-    #This is local()ed in route_message().
+    #This is local()ed in handle_message().
     $self->{'_prevent_custom_handler'} = 1;
 
     return $self->_create_and_send_msg(
