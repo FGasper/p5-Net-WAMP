@@ -15,13 +15,7 @@ use parent qw(
 );
 
 use JSON;
-
-#sub on_EVENT {
-#    my ($self, $msg) = @_;
-#
-#    #print JSON::encode_json( $msg->to_unblessed() ), $/;
-#    print JSON::encode_json( $msg ), $/;
-#}
+use Socket ();
 
 #----------------------------------------------------------------------
 
@@ -32,39 +26,83 @@ substr($host_port, 0, 0) = 'localhost:' if -1 == index($host_port, ':');
 
 use Carp::Always;
 
-use Net::WAMP::Transport::WebSocket::Client ();
+use HTTP::Response ();
+use IO::Framed::ReadWrite ();
 
+use FindBin;
+use lib "$FindBin::Bin/../../p5-Net-WebSocket/lib";
+use Net::WebSocket::Endpoint::Client ();
+use Net::WebSocket::Frame::text ();
+use Net::WebSocket::Handshake::Client ();
+use Net::WebSocket::Parser ();
+
+use Types::Serialiser ();
 use IO::Socket::INET ();
-#my $inet = IO::Socket::INET->new('demo.crossbar.io:80');
+
 my $inet = IO::Socket::INET->new($host_port);
-die "[$!][$@]" if !$inet;
+die "$host_port - [$!][$@]" if !$inet;
 
 $inet->autoflush(1);
 
-#my $wio = Net::WAMP::Transport::WebSocket::Client->new( $inet, $inet );
+my $iof = IO::Framed::ReadWrite->new($inet);
 
-use Net::WAMP::Transport::Queue ();
+#----------------------------------------------------------------------
 
-$wio->handshake( 'wss://demo.crossbar.io/ws', 'json' );
+my $hsk = Net::WebSocket::Handshake::Client->new(
+    uri => 'wss://demo.crossbar.io/ws',
+    subprotocols => [ 'wamp.2.json' ],
+);
 
-my $client = WAMP_Client->new( transport => $wio );
+$inet->syswrite( $hsk->create_header_text() . "\x0d\x0a" );
+
+my $buf;
+
+while (1) {
+    recv( $inet, $buf, 32768, Socket::MSG_PEEK() ) or do { die $! if $! };
+    last if $buf =~ m<\A(.+?)\x0d\x0a\x0d\x0a>s;
+}
+
+sysread( $inet, $buf, 4 + length($buf) ) or die $!;
+my $resp = HTTP::Response->parse( $buf );
+
+$hsk->validate_accept_or_die( $resp->header('Sec-WebSocket-Accept') );
+
+print STDERR "WebSocket handshake ok\n";
+
+#XXX Flagrantly ignoring the HTTP response otherwise …
+
+my $ept = Net::WebSocket::Endpoint::Client->new(
+    parser => Net::WebSocket::Parser->new( $iof ),
+    out => $iof,
+);
+
+#----------------------------------------------------------------------
+
+my $client = WAMP_Client->new(
+    serialization => 'json',
+    on_send => sub {
+        my $frm = Net::WebSocket::Frame::text->new(
+            $ept->FRAME_MASK_ARGS(),
+            payload_sr => \$_[0],
+        );
+        $iof->write( $frm->to_bytes());
+    },
+);
 
 $client->send_HELLO(
     'felipes_demo', #'myrealm',
 );
 
 use Data::Dumper;
-print STDERR "RECEIVING …\n";
-print Dumper($client->handle_next_message());
-print STDERR "RECEIVED …\n";
+print Dumper($client->handle_message( $ept->get_next_message()->get_payload() ));
 
 #----------------------------------------------------------------------
 
+print STDERR "Subscribing …\n";
 $client->send_SUBSCRIBE( {}, 'com.myapp.hello' );
 print STDERR "sent subscribe\n";
-print Dumper($client->handle_next_message());
+print Dumper($client->handle_message($ept->get_next_message()->get_payload()));
 
-use Types::Serialiser ();
 $client->send_PUBLISH(
     {
         acknowledge => Types::Serialiser::true(),
@@ -75,10 +113,10 @@ $client->send_PUBLISH(
 );
 
 #PUBLISHED
-print Dumper($client->handle_next_message());
+print Dumper($client->handle_message($ept->get_next_message()->get_payload()));
 
 #EVENT
-print Dumper($client->handle_next_message());
+print Dumper($client->handle_message($ept->get_next_message()->get_payload()));
 
 #----------------------------------------------------------------------
 

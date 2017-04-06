@@ -16,7 +16,7 @@ WriteMakefile(
     PREREQ_PM    => {
         'autodie'                  => 0,
         'parent'                   => 0,
-        'X::Tiny'   => 0,
+        'X::Tiny'                  => 0.02,
         'Module::Load'  => 0,
         'Try::Tiny' => 0,
         'Types::Serialiser' => 0,

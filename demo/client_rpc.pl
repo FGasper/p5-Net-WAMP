@@ -14,7 +14,7 @@ use parent qw(
     Net::WAMP::Role::Callee
 );
 
-use IO::Framed::ReadWrite::Blocking ();
+use IO::Framed::ReadWrite ();
 
 sub on_INVOCATION {
     my ($self, $msg, $procedure, $worker) = @_;
@@ -66,7 +66,7 @@ my $inet = IO::Socket::INET->new(
 die "[$!][$@]" if !$inet;
 
 my $rs = Net::WAMP::RawSocket::Client->new(
-    io => IO::Framed::ReadWrite::Blocking->new( $inet ),
+    io => IO::Framed::ReadWrite->new( $inet ),
 );
 
 $rs->send_handshake( serialization => 'json' );

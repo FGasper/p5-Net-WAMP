@@ -45,7 +45,7 @@ use Carp::Always;
 
 die "Need [ip:]port!" if !$port;
 
-use IO::Framed::ReadWrite::NonBlocking ();
+use IO::Framed::ReadWrite ();
 
 use IO::Socket::INET;
 my $server = IO::Socket::INET->new(
@@ -154,6 +154,11 @@ use Data::Dumper;
                 my $done = try { $_->isa('IO::Framed::X::EmptyRead') };
                 $done ||= try { $_->isa('Net::WebSocket::X::ReceivedClose') };
 
+                if (try { $_->isa('IO::Framed::X::ReadError') }) {
+                    $done = 1;
+                    warn $_;
+                }
+
                 if ($done) {
                     _remove_fh_session($fh);
                 }
@@ -197,7 +202,8 @@ use Data::Dumper;
 
                 IO::SigGuard::sysread( $fh, my $buf, 32768 ) or do {;
                     die $! if $!; #XXX
-                    die "Filehandle is closed!";    #XXX TODO
+                    _remove_fh_session($fh);
+                    next FH;
                 };
 #use Data::Dumper;
 #print STDERR Dumper('WebSocket headers received', $buf);
@@ -240,7 +246,7 @@ sub _remove_fh_session {
 sub _create_io {
     my ($fh) = @_;
 
-    my $io = IO::Framed::ReadWrite::NonBlocking->new($fh);
+    my $io = IO::Framed::ReadWrite->new($fh)->enable_write_queue();
     $fd_io{fileno $fh} = $io;
     return $io;
 }

@@ -11,8 +11,7 @@ use IO::Socket::INET ();
 
 use Carp::Always;
 
-use IO::Framed::ReadWrite::Blocking;
-use IO::Framed::ReadWrite::NonBlocking;
+use IO::Framed::ReadWrite;
 
 use FindBin;
 use lib "$FindBin::Bin/../lib";
@@ -258,7 +257,7 @@ my $callee_pid = fork or do {
     #NB: $inet is actually a blocking filehandle. There’s no
     #point to being non-blocking prior to actually being able
     #to answer RPC calls.
-    my $io = IO::Framed::ReadWrite::NonBlocking->new( $inet );
+    my $io = IO::Framed::ReadWrite->new( $inet )->enable_write_queue();
 
     my $rs = Net::WAMP::RawSocket::Client->new(
         io => $io,
@@ -379,7 +378,7 @@ my $inet = IO::Socket::INET->new(
 );
 die "[$!][$@]" if !$inet;
 
-my $io = IO::Framed::ReadWrite::Blocking->new( $inet );
+my $io = IO::Framed::ReadWrite->new( $inet );
 
 my $rs = Net::WAMP::RawSocket::Client->new(
     io => $io,
@@ -463,8 +462,7 @@ print STDERR Dumper( $client );
 STDIN->blocking(0);
 $inet->blocking(0);
 
-#XXX TODO: Make blocking/non-blocking togglable within the object.
-bless $io, 'IO::Framed::ReadWrite::NonBlocking';
+$io->enable_write_queue();
 
 my $std_sr = IO::Select->new(\*STDIN, $inet);
 

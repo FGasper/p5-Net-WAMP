@@ -27,7 +27,7 @@ if (@ARGV < 2) {
 
 use Carp::Always;
 
-use IO::Framed::ReadWrite::Blocking ();
+use IO::Framed::ReadWrite ();
 
 use Net::WAMP::RawSocket::Client ();
 
@@ -39,7 +39,7 @@ die "[$!][$@]" if !$inet;
 $inet->autoflush(1);
 
 my $rs = Net::WAMP::RawSocket::Client->new(
-    io => IO::Framed::ReadWrite::Blocking->new( $inet ),
+    io => IO::Framed::ReadWrite->new( $inet ),
 );
 
 print STDERR "send hs\n";
@@ -66,6 +66,8 @@ use Data::Dumper;
 print STDERR "RECEIVING …\n";
 print Dumper(_receive());
 print STDERR "RECEIVED …\n";
+
+utf8::decode($_) for @ARGV;
 
 $client->send_PUBLISH(
     {},
