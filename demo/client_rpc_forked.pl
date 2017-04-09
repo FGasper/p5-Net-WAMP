@@ -80,7 +80,7 @@ sub on_INVOCATION {
 sub on_INTERRUPT {
     my ($self, $msg, $interrupter) = @_;
 
-    my $mode = $msg->get('Metadata')->{'mode'};
+    my $mode = $msg->get('Auxiliary')->{'mode'};
 
     my $req_id = $msg->get('Request');
 

@@ -10,7 +10,9 @@ use parent qw(
 
 use Types::Serialiser ();
 
-use constant PARTS => qw( Request  Registration  Metadata  Arguments  ArgumentsKw );
+use constant PARTS => qw( Request  Registration  Auxiliary  Arguments  ArgumentsKw );
+
+use constant HAS_AUXILIARY => 1;
 
 use constant NUMERIC => qw( Request Registration );
 

@@ -7,12 +7,16 @@ use Net::WAMP::Messages ();
 
 use constant NUMERIC => ();
 
+use constant HAS_AUXILIARY => 0;
+
 sub new {
     my ($class, @args) = @_;
 
     my @parts = $class->PARTS();
 
     my $self = { map { ( "_$parts[$_]" => $args[$_] ) } 0 .. $#args };
+
+    $self->{'_Auxiliary'} ||= {} if $class->HAS_AUXILIARY();
 
     return bless $self, $class;
 }
@@ -24,7 +28,7 @@ sub get {
         return $self->{"_$key"};
     }
     elsif ( $key eq 'Options' or $key eq 'Details' ) {
-        return $self->{'_Metadata'};
+        return $self->{'_Auxiliary'};
     }
 
     my $name = $self->get_type();

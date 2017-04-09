@@ -33,6 +33,8 @@ sub handle_message {
 sub send_GOODBYE {
     my ($self, $details_hr, $reason) = @_;
 
+    $reason ||= $self->DEFAULT_GOODBYE_REASON();
+
     $self->{'_session'}->mark_sent_GOODBYE();
 
     my $msg = $self->_create_and_send_msg( 'GOODBYE', $details_hr, $reason );
@@ -56,7 +58,10 @@ sub _receive_GOODBYE {
     $self->{'_session'}->mark_received_GOODBYE();
 
     if (!$self->{'_session'}->has_sent_GOODBYE()) {
-        $self->send_GOODBYE( $msg->get('Details'), $msg->get('Reason') );
+        $self->send_GOODBYE(
+            $msg->get('Details'),
+            'wamp.error.goodbye_and_out',
+        );
     }
 
     return $self;

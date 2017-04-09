@@ -8,6 +8,8 @@ use parent qw(
     Net::WAMP::Base::TowardCallee
 );
 
-use constant PARTS => qw( Request  Metadata  Procedure  Arguments  ArgumentsKw );
+use constant PARTS => qw( Request  Auxiliary  Procedure  Arguments  ArgumentsKw );
+
+use constant HAS_AUXILIARY => 1;
 
 1;

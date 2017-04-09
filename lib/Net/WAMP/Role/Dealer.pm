@@ -27,13 +27,13 @@ Net::WAMP::Role::Dealer - Dealer role for Net::WAMP
         #fail, generic (Error = wamp.error.not_authorized)
         return 1;
 
-        #fail, custom Metadata (Error = wamp.error.not_authorized)
+        #fail, custom Auxiliary (Error = wamp.error.not_authorized)
         return { foo => 1 };
 
-        #fail, generic Metadata, custom Error
+        #fail, generic Auxiliary, custom Error
         return 1, 'myapp.error.go_away';
 
-        #fail, custom Metadata and Error
+        #fail, custom Auxiliary and Error
         return { foo => 1 }, 'myapp.error.go_away';
     }
 
@@ -341,7 +341,7 @@ sub _receive_CALL {
 
         $self->_send_INVOCATION(
             $registration,
-            $msg->get('Metadata'),
+            $msg->get('Auxiliary'),
             $msg->get('Arguments'),
             $msg->get('ArgumentsKw'),
         );
@@ -417,7 +417,7 @@ sub _receive_ERROR_INVOCATION {
         $self->_create_and_send_ERROR(
             'CALL',
             $orig_req_id,
-            ( map { $msg->get($_) } qw( Metadata Error Arguments ArgumentsKw ) ),
+            ( map { $msg->get($_) } qw( Auxiliary Error Arguments ArgumentsKw ) ),
         );
     }
     elsif ($msg->{'Error'} ne 'wamp.error.canceled') {
@@ -477,7 +477,7 @@ sub _receive_YIELD {
 
     $self->_send_RESULT(
         $orig_req_id,
-        $msg->get('Metadata'),
+        $msg->get('Auxiliary'),
         $msg->get('Arguments'),
         $msg->get('ArgumentsKw'),
     );
@@ -533,7 +533,7 @@ sub _receive_CANCEL {
     $self->_create_and_send_msg(
         'INTERRUPT',
         $target_req_id,
-        $msg->get('Metadata'),
+        $msg->get('Auxiliary'),
     );
 
     return;

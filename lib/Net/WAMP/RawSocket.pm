@@ -56,6 +56,12 @@ L<RawSocket|http://wamp-proto.org/static/rfc/draft-oberstet-hybi-crossbar-wamp.h
 protocol. It’s a simpler—and hopefully faster—protocol for speaking to a WAMP server
 when you have a raw TCP connection as opposed to a web browser.
 
+Note that one of RawSocket’s limitations is a
+hard upper limit (16 MiB) on message size: if you want to
+send or receive
+single messages of over 16 MiB, you’ll need some other transport mechanism
+besides RawSocket.
+
 =head1 GENERAL METHODS
 
 =head2 I<CLASS>->new( %OPTS )
@@ -65,7 +71,7 @@ Instantiates the relevant class. %OPTS are:
 =over
 
 =item * C<max_receive_length> As per the protocol specification, this must be
-a power of 2 from 9 (512) to 24 (16_777_216).
+a power of 2 from 512 (2**9) to 16,777,216 (2**24), inclusive.
 
 =item * C<max_pings> The number of pings to allow unanswered before we
 give up on the connection.

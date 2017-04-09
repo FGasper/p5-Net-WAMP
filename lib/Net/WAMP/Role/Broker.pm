@@ -24,13 +24,13 @@ Net::WAMP::Role::Broker - Broker role for Net::WAMP
         #fail, generic (Error = wamp.error.not_authorized)
         return 1;
 
-        #fail, custom Metadata (Error = wamp.error.not_authorized)
+        #fail, custom Auxiliary (Error = wamp.error.not_authorized)
         return { foo => 1 };
 
-        #fail, generic Metadata, custom Error
+        #fail, generic Auxiliary, custom Error
         return 1, 'myapp.error.go_away';
 
-        #fail, custom Metadata and Error
+        #fail, custom Auxiliary and Error
         return { foo => 1 }, 'myapp.error.go_away';
     }
 

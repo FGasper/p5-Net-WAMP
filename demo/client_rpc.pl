@@ -56,6 +56,8 @@ sub RPC_com_myapp_sum {
 
 package main;
 
+my $SERIALIZATION = 'msgpack';
+
 my $host_port = $ARGV[0] or die "Need [host:]port!";
 substr($host_port, 0, 0) = 'localhost:' if -1 == index($host_port, ':');
 
@@ -73,14 +75,14 @@ my $rs = Net::WAMP::RawSocket::Client->new(
     io => IO::Framed::ReadWrite->new( $inet ),
 );
 
-$rs->send_handshake( serialization => 'json' );
+$rs->send_handshake( serialization => $SERIALIZATION );
 $rs->verify_handshake();
 
 #----------------------------------------------------------------------
 use Carp::Always;
 
 my $client = WAMP_Client->new(
-    serialization => 'json',
+    serialization => $SERIALIZATION,
     on_send => sub { $rs->send_message($_[0]) },
 );
 
@@ -124,9 +126,11 @@ while ( my $msg = _receive() ) {
 
 #----------------------------------------------------------------------
 
-
+$client->send_GOODBYE();
+print Dumper( _receive() );
 
 #----------------------------------------------------------------------
+
 
 
 1;

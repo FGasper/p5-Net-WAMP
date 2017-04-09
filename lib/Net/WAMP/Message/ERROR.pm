@@ -7,7 +7,9 @@ use Net::WAMP::Messages ();
 
 use parent qw( Net::WAMP::Base::Message );
 
-use constant PARTS => qw( Type  Request  Metadata  Error  Arguments  ArgumentsKw );
+use constant PARTS => qw( Type  Request  Auxiliary  Error  Arguments  ArgumentsKw );
+
+use constant HAS_AUXILIARY => 1;
 
 use constant NUMERIC => qw( Type Request );
 

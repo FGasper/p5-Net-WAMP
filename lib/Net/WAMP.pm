@@ -45,6 +45,8 @@ A simple client:
 
     my $client = My_Client->new(
         serialization => 'json',
+
+        #Output this way:
         on_send => sub {
             my $serialized_bytes = shift;
             _send_serialized($serialized_bytes);
@@ -53,6 +55,7 @@ A simple client:
 
     $client->send_HELLO( 'my-realm' );
 
+    #Input this way:
     my $msg = $client->handle_message( _read_from_transport() );
 
     #Do some sort of validation of the WELCOME message here …
@@ -70,6 +73,8 @@ L<Web Application Messaging Protocol (WAMP)|http://wamp-proto.org/>.
 
 =head1 ALPHA STATUS
 
+B<CAVEAT EMPTOR!>
+
 The WAMP standard itself is not yet finalized, so any implementations are
 by definition subject to change.
 (L<The current specification|http://wamp-proto.org/spec/> is itself a
@@ -86,11 +91,12 @@ being in less-than-stable states. This implementation will probably hold
 off on implementing those as a result; however, pull requests will be
 considered.
 
-Net::WAMP’s design aims to implement only WAMP. It is agnostic
-as to which way you want to do transport, what you do with your messages,
+Net::WAMP’s design aims to implement only WAMP and to be agnostic about
+anything else: which way you do transport, what you do with your messages,
 etc. This distribution does include an implementation of WAMP’s RawSocket
 protocol; however, nothing makes you use this particular implementation.
-If you wanted to use your own (maybe using XS?), nothing prevents you.
+If you wanted to use your own (maybe using XS?), nothing prevents you, and
+you should have minimal, if any, unused code loaded.
 
 You may get a better sense of how to use Net::WAMP by looking at the
 distribution’s example scripts; however, for the sake of completeness,
@@ -98,7 +104,12 @@ here is the formal documentation. The following assumes that you are already
 familiar with WAMP; consult the specification for more background if you
 need it.
 
-=head1 GENERAL WORKFLOW
+There have been several internal design changes over the course of
+development, some of which the documentation may not reflect.
+Please L<open tasks|https://github.com/FGasper/p5-Net-WAMP> for any
+inconsistencies you note between the documentation and the actual code.
+
+=head1 WORKFLOW
 
 The basic workflow is:
 
@@ -122,9 +133,8 @@ serialization and C<on_send> callback.
 The role classes contain the role-specific logic for packaging and parsing
 WAMP messages. These are the centerpiece of your WAMP interactions.
 
-
-Your application will need to subclass one or more of the provided roles.
-Use multiple inheritance to govern which roles your class
+Your application should create a subclass of one or more of the provided roles.
+Use multiple inheritance to govern which roles your subclass
 will execute.
 An instance of that subclass defines your application’s WAMP activity.
 Such a subclass must implement either client or router roles, but NOT both:
@@ -167,19 +177,20 @@ Each client class implements the following methods:
 the client will send. This coderef must send this message to whatever transport
 layer (e.g., WebSocket, RawSocket, …) you’re using.
 
-=item * C<serialization>: C<json> (default); eventually C<msgpack> will
+=item * C<serialization> (optional): C<json> is the default;
+eventually C<msgpack> will
 work, but L<not yet|https://github.com/msgpack/msgpack-perl/issues/17>.
 
 =back
 
-=head2 I<OBJ>->send_HELLO( REALM, METADATA_HR )
+=head2 I<OBJ>->send_HELLO( REALM, AUXILIARY_HR )
 
-Sends a HELLO message to the given REALM. METADATA_HR is optional and,
+Sends a HELLO message to the given REALM. AUXILIARY_HR is optional and,
 if given, will be merged with the features data for this framework.
 
-=head2 I<OBJ>->send_GOODBYE( METADATA_HR, REASON )
+=head2 I<OBJ>->send_GOODBYE( AUXILIARY_HR, REASON )
 
-=head2 I<OBJ>->send_ABORT( METADATA_HR, REASON )
+=head2 I<OBJ>->send_ABORT( AUXILIARY_HR, REASON )
 
 See the WAMP specification for what these do.
 
@@ -243,9 +254,9 @@ Currently this takes no parameters.
 Just like its client counterpart, but the SESSION_OBJ tells the Router
 where the message came from.
 
-=head2 I<OBJ>->send_GOODBYE( SESSION_OBJ, METADATA_HR, REASON )
+=head2 I<OBJ>->send_GOODBYE( SESSION_OBJ, AUXILIARY_HR, REASON )
 
-=head2 I<OBJ>->send_ABORT( SESSION_OBJ, METADATA_HR, REASON )
+=head2 I<OBJ>->send_ABORT( SESSION_OBJ, AUXILIARY_HR, REASON )
 
 See the WAMP specification for what these do.
 
@@ -254,21 +265,6 @@ See the WAMP specification for what these do.
 “Forget”s a session object by removing all traces of it from the
 Router object internals. You’ll probably only do this when a WAMP
 session has ended.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 =head1 ROLE MESSAGE HANDLERS
 
@@ -284,6 +280,9 @@ B<ERROR messages> are special: use methods C<on_ERROR_CALL()>, etc.
 Most handlers just receive the appropriate
 Message object (more on these later); see the individual modules’
 documentation for variances from that pattern.
+
+Note that Router classes (Dealer and Broker) have a special C<get_session()>
+method that returns the Session object for the current message.
 
 =head1 I/O
 
@@ -308,16 +307,14 @@ some other transport mechanism—even another messaging protocol!
 Net::WAMP includes a full implementation of WAMP’s “RawSocket” protocol
 in L<Net::WAMP::RawSocket>. This protocol is simpler than
 WebSocket and is probably a better choice for communication between any
-two WAMP nodes that can speak simple TCP. One limitation it imposes is a
-hard upper limit on message size: if you think you might want to transmit
-single messages of over 8 MiB, you’ll need some other transport mechanism
-besides RawSocket.
+two WAMP nodes that can speak raw TCP.
 
 =head1 SERIALIZATIONS
 
 WAMP defines two serializations officially: L<JSON|http://json.org>
 (C<json>)
-and L<MessagePack|http://msgpack.org> (C<msgpack>). Net::WAMP only supports
+and L<MessagePack|http://msgpack.org> (C<msgpack>). Net::WAMP only works
+with
 JSON for now, though
 L<MessagePack support should arrive soon|https://github.com/msgpack/msgpack-perl/issues/17>.
 
@@ -325,63 +322,6 @@ L<MessagePack support should arrive soon|https://github.com/msgpack/msgpack-perl
 
 Net::WAMP uses L<Types::Serialiser> to represent boolean values. You’ll
 need to do likewise to interact with Net::WAMP. (Sorry.)
-
-=head1 ROLE CLASSES
-
-=head2 L<Net::WAMP::Role::Publish>
-
-=over
-
-=item * C<send_PUBLISH( METADATA_HR, TOPIC )>
-
-=item * C<send_PUBLISH( METADATA_HR, TOPIC, ARGS_AR )>
-
-=item * C<send_PUBLISH( METADATA_HR, TOPIC, ARGS_AR, ARGS_HR )>
-
-=back
-
-=head2 L<Net::WAMP::Role::Subscriber>
-
-=over
-
-=item * C<send_SUBSCRIBE( METADATA_HR, TOPIC )>
-
-=item * C<send_UNSUBSCRIBE( SUBSCRIPTION_ID )>
-
-=back
-
-Also, you can create C<on_EVENT()> to handle published messages;
-in addition to the EVENT message object, it also receives the subscribed TOPIC
-as a separate parameter.
-
-=head2 L<Net::WAMP::Role::Caller>
-
-=over
-
-=item * C<send_CALL( METADATA_HR, PROCEDURE )>
-
-=item * C<send_CALL( METADATA_HR, PROCEDURE, ARGS_AR )>
-
-=item * C<send_CALL( METADATA_HR, PROCEDURE, ARGS_AR, ARGS_HR )>
-
-=back
-
-=head2 L<Net::WAMP::Role::Callee>
-
-=over
-
-=item * C<send_YIELD( INVOCATION_ID, METADATA )>
-
-=item * C<send_YIELD( INVOCATION_ID, METADATA, ARGS_AR )>
-
-=item * C<send_YIELD( INVOCATION_ID, METADATA, ARGS_AR, ARGS_HR )>
-
-=back
-
-The C<on_INVOCATION()> callback receives two additional parameters after
-the INVOCATION message object: the procedure name, and an instance of
-L<Net::WAMP::RPCWorker()>. This object streamlines the process of sending
-a response back to the caller.
 
 =head1 MESSAGE CLASSES
 
@@ -407,7 +347,7 @@ Regardless, the duality serves no practical purpose since no message can have
 both C<Options> and C<Details>. In my opinion, this is just two names for the
 same thing, which is just extra terminology to keep track of.
 For these reasons, Net::WAMP
-generalizes these names to C<Metadata>. If you like, you can still
+generalizes these names to C<Auxiliary>. If you like, you can still
 use either of the other names for any of the message types that contains
 either (i.e., you can use C<Options> with C<HELLO> just the same as
 C<Details>).
@@ -434,8 +374,8 @@ and the Publisher Exclusion feature for more details.
 
 Both of these have a C<caller_can_receive_progress()> method that returns a
 boolean to indicate whether the caller indicated a willingness to receive
-a progressive response to this specific remote procedure call. See the
-WAMP specification’s discussion of the Progressive Call Results feature
+a progressive response to this specific remote procedure call. See L<the
+WAMP specification’s discussion of the Progressive Call Results feature|http://wamp-proto.org/static/rfc/draft-oberstet-hybi-crossbar-wamp.html#rfc.section.14.3.1> feature
 for more information.
 
 =head2 Net::WebSocket::Message::YIELD
@@ -444,23 +384,25 @@ for more information.
 
 Both of these have an C<is_progress()> method that returns a
 boolean to indicate whether this message will be followed by others for the
-same CALL/INVOCATION. See the
-WAMP specification’s discussion of the Progressive Call Results feature
+same CALL/INVOCATION. See L<the
+WAMP specification’s discussion of the Progressive Call Results feature|http://wamp-proto.org/static/rfc/draft-oberstet-hybi-crossbar-wamp.html#rfc.section.14.3.1>
 for more information.
 
 =back
 
 =head1 ADVANCED PROFILE FEATURES
 
-Net::WAMP supports some of WAMP’s Advanced Profile features. More may be
+Net::WAMP supports a few of L<WAMP’s Advanced Profile features|http://wamp-proto.org/static/rfc/draft-oberstet-hybi-crossbar-wamp.html#rfc.section.14>. More may be
 added at a later date; patches for at least the B<reasonably> stable features
 are welcome. :)
 
 =over
 
-=item * C<publisher_exclusion> (publisher/broker feature)
+=item * L<publisher_exclusion|http://wamp-proto.org/static/rfc/draft-oberstet-hybi-crossbar-wamp.html#rfc.section.14.4.2> (publisher/broker feature)
 
-=item * C<progressive_call_results> (RPC feature)
+=item * L<progressive_call_results|http://wamp-proto.org/static/rfc/draft-oberstet-hybi-crossbar-wamp.html#rfc.section.14.3.1> (RPC feature)
+
+=item * L<call_canceling|http://wamp-proto.org/static/rfc/draft-oberstet-hybi-crossbar-wamp.html#rfc.section.14.3.4> (RPC feature)
 
 =back
 
@@ -470,9 +412,7 @@ Support more Advanced Profile features, especially:
 
 =over
 
-=item * call_canceling
-
-=item * subscriber_blackwhite_listing
+=item * L<subscriber_blackwhite_listing|http://wamp-proto.org/static/rfc/draft-oberstet-hybi-crossbar-wamp.html#rfc.section.14.4.1>
 
 =back
 

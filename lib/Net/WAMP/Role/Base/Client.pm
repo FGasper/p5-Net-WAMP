@@ -17,6 +17,10 @@ use constant PEER_CAN_ACCEPT => (
     'HELLO',
 );
 
+use constant {
+    DEFAULT_GOODBYE_REASON => 'wamp.error.close_realm',
+};
+
 sub send_HELLO {
     my ($self, $realm, $details_hr_in) = @_;
 

@@ -5,7 +5,9 @@ use warnings;
 
 use parent qw( Net::WAMP::Base::Message );
 
-use constant PARTS => qw( Request  Metadata );
+use constant PARTS => qw( Request  Auxiliary );
+
+use constant HAS_AUXILIARY => 1;
 
 use constant NUMERIC => qw( Request );
 
