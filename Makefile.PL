@@ -22,9 +22,8 @@ WriteMakefile(
         'Types::Serialiser' => 0,
 
         #recommend JSON
+        #recommend IO::Framed 0.02+
 
-        #XXX FIXME Don’t require this?
-        #'HTTP::Response' => 0,
     },
     META_MERGE => {
         'meta-spec' => { version => 2 },

@@ -65,7 +65,7 @@ sub verify_handshake {
 }
 
 sub _create_client_handshake {
-    my ($self, $max_len, $serialization) = @_;
+    my ($self, $serialization) = @_;
 
     my $serialization_code = Net::WAMP::RawSocket::Constants::get_serialization_code($serialization);
 
