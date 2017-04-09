@@ -48,7 +48,10 @@ sub yield_progress {
         die "Caller didn’t indicate acceptance of progressive results!";
     }
 
+    $self->_not_already_finished();
+
     local $opts_hr->{'progress'} = $Types::Serialiser::true;
+    local $self->{'_sent_YIELD'};   #make this flag not actually set
 
     return $self->yield($opts_hr, @_[ 2 .. $#_ ]);
 }
@@ -56,19 +59,23 @@ sub yield_progress {
 sub yield {
     my ($self, $opts_hr, @payload) = @_;
 
-    #$self->_not_already_interrupted();
+    $self->_not_already_finished();
 
-    return $self->{'_callee'}->send_YIELD(
+    my $yield = $self->{'_callee'}->send_YIELD(
         $self->{'_msg'}->get('Request'),
         $opts_hr,
         @payload,
     );
+
+    $self->{'_sent_YIELD'} = 1;
+
+    return $yield
 }
 
 sub error {
     my ($self, $details_hr, $err_uri, @args) = @_;
 
-    #$self->_not_already_interrupted();
+    $self->_not_already_finished();
 
     return $self->{'_callee'}->send_ERROR(
         $self->{'_msg'}->get('Request'),
@@ -78,29 +85,14 @@ sub error {
     );
 }
 
-#sub interrupt {
-#    my ($self, $msg) = @_;
-#
-#    $self->_not_already_interrupted();
-#
-#    $self->{'_interrupted'} = 1;
-#
-#    if ($self->{'_on_interrupt'}) {
-#        $self->{'_on_interrupt'}->($msg);
-#    }
-#
-#    return;
-#}
-
 #----------------------------------------------------------------------
 
-#sub _not_already_interrupted {
-#    my ($self, $msg) = @_;
-#
-#    #XXX
-#    die "ALREADY INTERRUPTED!!" if $self->{'_interrupted'};
-#
-#    return;
-#}
+sub _not_already_finished {
+    my ($self, $msg) = @_;
+
+    die 'Already sent YIELD!' if $self->{'_sent_YIELD'};
+
+    return;
+}
 
 1;

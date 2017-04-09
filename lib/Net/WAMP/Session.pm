@@ -3,6 +3,8 @@ package Net::WAMP::Session;
 use strict;
 use warnings;
 
+use Types::Serialiser ();
+
 use Net::WAMP::Messages ();
 
 sub new {
@@ -49,6 +51,94 @@ sub message_object_to_bytes {
     my ($self, $wamp_msg) = @_;
 
     return $self->_stringify( $wamp_msg->to_unblessed() );
+}
+
+sub set_peer_roles {
+    my ($self, $peer_roles_hr) = @_;
+
+    if ($self->{'_peer_roles'}) {
+        die 'Already set peer roles!';
+    }
+
+    $self->{'_peer_roles'} = $peer_roles_hr;
+
+    return;
+}
+
+sub peer_is {
+    my ($self, $role) = @_;
+
+    $self->_verify_peer_roles_set();
+
+    return $self->{'_peer_roles'}{$role} ? 1 : 0;
+}
+
+sub peer_role_supports_boolean {
+    my ($self, $role, $feature) = @_;
+
+    die "Need role!" if !length $role;
+    die "Need feature!" if !length $feature;
+
+    $self->_verify_peer_roles_set();
+
+    if ( my $brk = $self->{'_peer_roles'}{$role} ) {
+        if ( my $features_hr = $brk->{'features'} ) {
+            my $val = $features_hr->{$feature};
+            return 0 if !defined $val;
+
+            if (!$val->isa('Types::Serialiser::Boolean')) {
+                die "“$role”/“$feature” ($val) is not a boolean value!";
+            }
+
+            return Types::Serialiser::is_true($val);
+        }
+    }
+
+    return 0;
+}
+
+sub _verify_peer_roles_set {
+    my ($self) = @_;
+
+    die 'No peer roles set!' if !$self->{'_peer_roles'};
+
+    return;
+}
+
+sub has_sent_GOODBYE {
+    return $_[0]->{'_sent_GOODBYE'};
+}
+
+sub mark_sent_GOODBYE {
+    my ($self) = @_;
+
+    if ($self->{'_sent_GOODBYE'}) {
+        die 'Already sent GOODBYE!';
+    }
+
+    $self->{'_sent_GOODBYE'} = 1;
+
+    if ($self->{'_received_GOODBYE'}) {
+        $self->{'_finished'} = 1;
+    }
+
+    return;
+}
+
+sub mark_received_GOODBYE {
+    my ($self) = @_;
+
+    $self->{'_received_GOODBYE'} = 1;
+
+    if ($self->{'_sent_GOODBYE'}) {
+        $self->{'_finished'} = 1;
+    }
+
+    return;
+}
+
+sub is_finished {
+    return $_[0]->{'_finished'} ? 1 : undef;
 }
 
 #sub enqueue_message_to_send {

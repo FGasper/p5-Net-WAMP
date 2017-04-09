@@ -9,6 +9,8 @@ use parent qw( Net::WAMP::Base::Message );
 
 use constant PARTS => qw( Type  Request  Metadata  Error  Arguments  ArgumentsKw );
 
+use constant NUMERIC => qw( Type Request );
+
 sub get_request_type {
     my ($self) = @_;
 

@@ -5,7 +5,122 @@ use warnings;
 
 use Module::Load ();
 
+use constant REQUIRE_STRICT_PEER_ROLES => 1;
+
+use constant PEER_CAN_ACCEPT => qw( GOODBYE  ABORT  ERROR );
+
 #----------------------------------------------------------------------
+
+sub handle_message {
+    my ($self) = @_;
+
+    my $msg = $self->{'_session'}->message_bytes_to_object($_[1]);
+
+    my ($handler_cr, $handler2_cr) = $self->_get_message_handlers($msg);
+
+    local $self->{'_prevent_custom_handler'};
+
+    my @extra_args = $handler_cr->( $self, $msg );
+
+    #Check for external method definition
+    if (!$self->{'_prevent_custom_handler'} && $handler2_cr) {
+        $handler2_cr->( $self, $msg, @extra_args );
+    }
+
+    return $msg;
+}
+
+sub send_GOODBYE {
+    my ($self, $details_hr, $reason) = @_;
+
+    $self->{'_session'}->mark_sent_GOODBYE();
+
+    my $msg = $self->_create_and_send_msg( 'GOODBYE', $details_hr, $reason );
+
+    return $msg;
+}
+
+sub send_ABORT {
+    my ($self, $details_hr, $reason) = @_;
+
+    return $self->_create_and_send_msg( 'ABORT', $details_hr, $reason );
+}
+
+sub get_agent_string { return ref $_[0] }
+
+#----------------------------------------------------------------------
+
+sub _receive_GOODBYE {
+    my ($self, $msg) = @_;
+
+    $self->{'_session'}->mark_received_GOODBYE();
+
+    if (!$self->{'_session'}->has_sent_GOODBYE()) {
+        $self->send_GOODBYE( $msg->get('Details'), $msg->get('Reason') );
+    }
+
+    return $self;
+}
+
+sub _receive_ERROR {
+    my ($self, $msg) = @_;
+
+    my $subtype = $msg->get_request_type();
+    my $subhandler_n = "_receive_ERROR_$subtype";
+
+    return $self->$subhandler_n($msg);
+}
+
+sub _ABORT_from_protocol_error {
+    my ($self, $msg) = @_;
+
+    $self->send_ABORT(
+        {
+            ( $msg ? (message => $msg) : () ),
+        },
+        'net_wamp.protocol_error',
+    );
+}
+
+sub _send_msg {
+    my ($self, $msg) = @_;
+
+    if ($self->{'_session'}->is_finished()) {
+        die "Session ($self->{'_session'}) is already finished!";
+    }
+
+    $self->_check_peer_roles_before_send($msg);
+
+    $self->{'_session'}->send_message($msg);
+
+    return $self;
+}
+
+sub _create_and_send_msg {
+    my ($self, $name, @parts) = @_;
+
+    #This is in Peer.pm
+    my $msg = $self->_create_msg($name, @parts);
+
+    $self->_send_msg($msg);
+
+    return $msg;
+}
+
+sub _create_and_send_session_msg {
+    my ($self, $name, @parts) = @_;
+
+    #This is in Peer.pm
+    my $msg = $self->_create_msg(
+        $name,
+        $self->{'_session'}->get_next_session_scope_id(),
+        @parts,
+    );
+
+    $self->_send_msg($msg);
+
+    return $msg;
+}
 
 sub _get_message_handlers {
     my ($self, $msg) = @_;
@@ -76,7 +191,47 @@ sub _create_msg {
 sub _receive_ABORT {
     my ($self, $msg) = @_;
 
+    require Data::Dumper;
+    warn Data::Dumper::Dumper('received ABORT', $msg);
+
     #die "$msg: " . $self->_stringify($msg);   #XXX
+
+    return;
+}
+
+sub _verify_receiver_can_accept_msg_type {
+    my ($self, $msg_type) = @_;
+
+    my $session = $self->{'_session'};
+
+    if (!grep { $_ eq $msg_type } $self->PEER_CAN_ACCEPT()) {
+        my $role;
+
+        my $cr = $self->can("receiver_role_of_$msg_type") or do {
+            die "I don’t know what role accepts “$msg_type” messages!";
+        };
+
+        $role = $cr->();
+
+        if (!$session->peer_is( $role )) {
+            die Net::WAMP::X->create(
+                'PeerLacksMessageRecipientRole',
+                $msg_type,
+                $role,
+            );
+        }
+
+        if (my $cr = $self->can("receiver_feature_of_$msg_type")) {
+            if (!$session->peer_role_supports_boolean( $role, $cr->() )) {
+                my $feature_name = $cr->();
+                die Net::WAMP::X->create(
+                    'PeerLacksMessageRecipientFeature',
+                    $msg_type,
+                    $feature_name,
+                );
+            }
+        }
+    }
 
     return;
 }

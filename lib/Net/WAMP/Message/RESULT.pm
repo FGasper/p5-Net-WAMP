@@ -13,4 +13,6 @@ sub is_progress {
     return Types::Serialiser::is_true( $_[0]->get('Metadata')->{'progress'} );
 }
 
+use constant NUMERIC => qw( Request );
+
 1;

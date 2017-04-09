@@ -1,5 +1,34 @@
 package Net::WAMP::Role::Publisher;
 
+=encoding utf-8
+
+=head1 NAME
+
+Net::WAMP::Role::Publisher - Publisher role for Net::WAMP
+
+=head1 SYNOPSIS
+
+    package MyWAMP;
+
+    use parent qw( Net::WAMP::Role::Publisher );
+
+    sub on_PUBLISHED { ... }
+
+    sub on_ERROR_PUBLISH { ... }
+
+    package main;
+
+    my $wamp = MyWAMP->new( on_send => sub { ... } );
+
+    $wamp->send_PUBLISH( {}, 'some.topic', \@args, \%args_kv );
+
+=head1 DESCRIPTION
+
+See the main L<Net::WAMP> documentation for more background on
+how to use this class in your code.
+
+=cut
+
 use strict;
 use warnings;
 
@@ -24,10 +53,8 @@ BEGIN {
 sub send_PUBLISH {
     my ($self, $opts_hr, $topic, @args) = @_;
 
-    if (!$self->peer_is('broker')) {
-        die "Peer is not a broker; can’t publish!";
-    }
-
+    #Considered being “nice” and allowing this, but we never know
+    #when WAMP might actually try to utilize number or string values.
     #local $opts_hr->{'acknowledge'} = ${ *{$Types::Serialiser::{ $opts_hr->{'acknowledge'} ? 'true' : 'false' }}{'SCALAR'} } if exists $opts_hr->{'acknowledge'};
 
     my $msg = $self->_create_and_send_session_msg(
@@ -37,7 +64,9 @@ sub send_PUBLISH {
         @args,
     );
 
-    $self->{'_sent_PUBLISH'}{$msg->get('Request')} = $msg;
+    if ($msg->publisher_wants_acknowledgement()) {
+        $self->{'_sent_PUBLISH'}{$msg->get('Request')} = $msg;
+    }
 
     return $msg;
 }
@@ -46,7 +75,7 @@ sub _receive_PUBLISHED {
     my ($self, $msg) = @_;
 
     if (!delete $self->{'_sent_PUBLISH'}{ $msg->get('Request') }) {
-        die sprintf("Received PUBLISHED for unknown! (%s)", $msg->get('Request')); #XXX
+        warn sprintf("Received PUBLISHED for unknown! (%s)", $msg->get('Request')); #XXX
     }
 
     return;

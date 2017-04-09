@@ -7,4 +7,6 @@ use parent qw( Net::WAMP::Base::Message );
 
 use constant PARTS => qw( Subscription  Publication  Metadata  Arguments  ArgumentsKw );
 
+use constant NUMERIC => qw( Subscription );
+
 1;

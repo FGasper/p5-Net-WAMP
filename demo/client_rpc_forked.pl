@@ -38,9 +38,11 @@ use parent (
 );
 
 sub on_EVENT {
-    my ($self, $msg, $topic) = @_;
+    my ($self, $msg) = @_;
 
-    if ($topic eq 'fg_CALL') {
+    my $subcr_msg = $self->get_SUBSCRIBE($msg);
+
+    if ($subcr_msg->get('Topic') eq 'fg_CALL') {
         my $channel = $msg->get('ArgumentsKw')->{'fg_CALL_send_channel'} or do {
             use Data::Dumper;
             die Dumper('no channel', $msg);
@@ -56,7 +58,11 @@ sub on_EVENT {
 }
 
 sub on_INVOCATION {
-    my ($self, $msg, $procedure, $worker) = @_;
+    my ($self, $msg, $worker) = @_;
+
+    my $reg_msg = $self->get_REGISTER($msg);
+
+    my $procedure = $reg_msg->get('Procedure');
 
     my $proc_snake = $procedure;
     $proc_snake =~ tr<.><_>;
@@ -72,7 +78,7 @@ sub on_INVOCATION {
 }
 
 sub on_INTERRUPT {
-    my ($self, $msg) = @_;
+    my ($self, $msg, $interrupter) = @_;
 
     my $mode = $msg->get('Metadata')->{'mode'};
 
@@ -101,12 +107,7 @@ sub on_INTERRUPT {
         warn "bad mode: “$mode”";
     }
 
-    $self->_create_and_send_ERROR(
-        'INVOCATION',
-        $req_id,
-        {},
-        'wamp.error.canceled',
-    );
+    #$interrupter->send_ERROR( {} );
 
     return;
 }
@@ -359,7 +360,7 @@ my $callee_pid = fork or do {
 
     $inet->blocking(1);
 
-    $client->send_UNREGISTER( 'com.myapp.longrun' );
+    $client->send_UNREGISTER_for_procedure( 'com.myapp.longrun' );
     $io->flush_write_queue();
 
     #XXX TODO UNSUBSCRIBE, too?

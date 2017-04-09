@@ -8,7 +8,7 @@ use parent 'Net::WAMP::RawSocket';
 use Net::WAMP::RawSocket::Constants ();
 
 sub receive_and_answer_handshake {
-    my ($self, %opts) = @_;
+    my ($self) = @_;
 
     if ($self->{'_received_handshake'}) {
         die "Already!"; #XXX
@@ -21,7 +21,7 @@ sub receive_and_answer_handshake {
 
         $self->{'_serialization'} = $ser_name;
 
-        my $max_len_code = Net::WAMP::RawSocket::Constants::get_max_length_code($self->{'_max_receive_length'});
+        my $max_len_code = $self->{'_max_receive_code'};
 
         $self->_send_bytes(
             pack(

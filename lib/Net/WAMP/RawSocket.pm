@@ -1,5 +1,101 @@
 package Net::WAMP::RawSocket;
 
+=encoding utf-8
+
+=head1 NAME
+
+Net::WAMP::RawSocket
+
+=head1 SYNOPSIS
+
+Client:
+
+    my $rs = Net::WAMP::RawSocket::Client->new(
+
+        #required
+        io => IO::Framed::ReadWrite->new( $inet ),
+
+        #optional
+        max_pings           => 10,
+        max_receive_length  => 2**23,    #default
+    );
+
+    #msgpack is also accepted
+    $rs->send_handshake(
+        serialization => 'json',    #default
+    );
+
+    $rs->verify_handshake();
+
+    $rs->send_message('This is a message.);
+
+    my $msg_txt = $rs->get_next_message();
+
+Server:
+
+    my $rs = Net::WAMP::RawSocket::Server->new(
+
+        #required
+        io => IO::Framed::ReadWrite->new( $inet ),
+
+        #optional
+        max_pings           => 10,
+        max_receive_length  => 2**23,    #default
+    );
+
+    $rs->receive_and_answer_handshake();
+
+    $rs->send_message('This is a message.);
+
+    my $msg_txt = $rs->get_next_message();
+
+=head1 DESCRIPTION
+
+This module implements WAMP’s
+L<RawSocket|http://wamp-proto.org/static/rfc/draft-oberstet-hybi-crossbar-wamp.html#rfc.section.14.5.3.1>
+protocol. It’s a simpler—and hopefully faster—protocol for speaking to a WAMP server
+when you have a raw TCP connection as opposed to a web browser.
+
+=head1 GENERAL METHODS
+
+=head2 I<CLASS>->new( %OPTS )
+
+Instantiates the relevant class. %OPTS are:
+
+=over
+
+=item * C<max_receive_length> As per the protocol specification, this must be
+a power of 2 from 9 (512) to 24 (16_777_216).
+
+=item * C<max_pings> The number of pings to allow unanswered before we
+give up on the connection.
+
+=back
+
+=head2 I<OBJ>->send_message( MSG_STRING )
+
+Sends a regular message.
+
+=head2 I<OBJ>->get_next_message()
+
+Returns the next message string, or undef if no message is available.
+This will also (silently) consume any PONG messages that may arrive.
+
+=head2 I<OBJ>->check_heartbeat()
+
+Run this when your read timeout expires to send a PING message.
+
+=head2 I<OBJ>->get_serialization()
+
+C<json> or C<msgpack>.
+
+=head2 I<OBJ>->get_max_send_length()
+
+The maximum bytes that the connection’s peer is willing to receive in
+a single RawSocket frame.
+
+=cut
+
 use strict;
 use warnings;
 
@@ -43,6 +139,8 @@ sub new {
 
         _ping_store => Net::WAMP::RawSocket::PingStore->new(),
     };
+
+    $self->{'_max_receive_code'} = Net::WAMP::RawSocket::Constants::get_max_length_code( $self->{'_max_receive_length'} );
 
     return bless $self, $class;
 }

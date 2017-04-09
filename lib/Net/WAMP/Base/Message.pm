@@ -5,6 +5,8 @@ use warnings;
 
 use Net::WAMP::Messages ();
 
+use constant NUMERIC => ();
+
 sub new {
     my ($class, @args) = @_;
 
@@ -41,6 +43,12 @@ sub get_type {
 #use it from an application. (Right?)
 sub to_unblessed {
     my ($self) = @_;
+
+    #So that our serializer will send these correctly.
+    #Other languages actually care about the difference...:-/
+    for my $num_label ( $self->NUMERIC() ) {
+        $self->{"_$num_label"} += 0;
+    }
 
     my @msg = (
         Net::WAMP::Messages::get_type_number( $self->get_type() ),

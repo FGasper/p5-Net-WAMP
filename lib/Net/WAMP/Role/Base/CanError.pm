@@ -1,16 +1,15 @@
-package Net::WAMP::Role::Base::Client::CanError;
+package Net::WAMP::Role::Base::CanError;
 
 use strict;
 use warnings;
-
-use parent qw( Net::WAMP::Role::Base::Client );
-
-use Net::WAMP::Messages ();
 
 use Try::Tiny;
 
 sub _create_and_send_ERROR {
     my ($self, $subtype, @args) = @_;
+
+    #This is local()ed in handle_message().
+    $self->{'_prevent_custom_handler'} = 1;
 
     return $self->_create_and_send_msg(
         'ERROR',
@@ -24,16 +23,23 @@ sub _catch_exception {
 
     my $ret;
 
+    my $id = sprintf '%x', substr( rand, 2 );
+
     try {
         $ret = $todo_cr->();
     }
     catch {
+
+        #Anything we catch here is likely not something we want
+        #a peer to know about.
+
+        warn "ERROR XID $id: $_";
+
         $self->_create_and_send_ERROR(
             $req_type,
             $req_id,
-            {},
-            'net-wamp.error.exception',
-            [ "$_" ],
+            'net_wamp.error',
+            [ "internal error (XID $id)" ],
         );
     };
 

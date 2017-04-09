@@ -17,7 +17,11 @@ use parent qw(
 use IO::Framed::ReadWrite ();
 
 sub on_INVOCATION {
-    my ($self, $msg, $procedure, $worker) = @_;
+    my ($self, $msg, $worker) = @_;
+
+    my $reg_msg = $self->get_REGISTER($msg);
+
+    my $procedure = $reg_msg->get('Procedure');
 
     my $proc_snake = $procedure;
     $proc_snake =~ tr<.><_>;

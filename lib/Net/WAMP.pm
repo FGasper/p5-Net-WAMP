@@ -70,30 +70,64 @@ L<Web Application Messaging Protocol (WAMP)|http://wamp-proto.org/>.
 
 =head1 ALPHA STATUS
 
-The WAMP standard itself is not yet finalized;
-L<the current specification|http://wamp-proto.org/spec/> is a significant
-revision
-of an earlier proposed standard. That said, the details of it should be
-pretty stable by this point; future changes to the core protocol should be
-minor.
-
-Also, several of the specification’s “Advanced” features are marked as
-being in less-than-stable states.
+The WAMP standard itself is not yet finalized, so any implementations are
+by definition subject to change.
+(L<The current specification|http://wamp-proto.org/spec/> is itself a
+significant revision
+of an earlier proposed standard.) That said, the details of it should be
+pretty stable by this point, so changes should be relatively minor.
 
 Net::WAMP will attempt to accommodate any future updates to the protocol
 with backward compatibility; however, at this point there are NO guarantees,
 and you should absolutely check the changelog before updating.
 
-=head1 HOW TO USE THIS FRAMEWORK
+Several of the specification’s “Advanced” features are marked as
+being in less-than-stable states. This implementation will probably hold
+off on implementing those as a result; however, pull requests will be
+considered.
 
-=head2 Roles
+Net::WAMP’s design aims to implement only WAMP. It is agnostic
+as to which way you want to do transport, what you do with your messages,
+etc. This distribution does include an implementation of WAMP’s RawSocket
+protocol; however, nothing makes you use this particular implementation.
+If you wanted to use your own (maybe using XS?), nothing prevents you.
+
+You may get a better sense of how to use Net::WAMP by looking at the
+distribution’s example scripts; however, for the sake of completeness,
+here is the formal documentation. The following assumes that you are already
+familiar with WAMP; consult the specification for more background if you
+need it.
+
+=head1 GENERAL WORKFLOW
+
+The basic workflow is:
+
+=over
+
+=item 0) Define your WAMP role class.
+
+=item 1) Set up your transport layer (e.g., WebSocket).
+
+=item 2) Instantiate your WAMP role class, with the appropriate
+serialization and C<on_send> callback.
+
+=item 3) WAMP handshake (HELLO/WELCOME)
+
+=back
+
+… then just sending and receiving messages.
+
+=head1 ROLE CLASSES
 
 The role classes contain the role-specific logic for packaging and parsing
-WAMP messages. Use multiple inheritance to govern which roles your application
-will execute.
+WAMP messages. These are the centerpiece of your WAMP interactions.
+
 
 Your application will need to subclass one or more of the provided roles.
-A given class must implement either client or router roles, but NOT both:
+Use multiple inheritance to govern which roles your class
+will execute.
+An instance of that subclass defines your application’s WAMP activity.
+Such a subclass must implement either client or router roles, but NOT both:
 
 =head3 Client Roles:
 
@@ -119,14 +153,139 @@ A given class must implement either client or router roles, but NOT both:
 
 =back
 
-You can create custom handlers for individual message types by creating C<on_*>
-methods in your subclasses; for example, if you want custom behavior on
-PUBLISHED messages, you can subclass L<Net::WAMP::Role::Publisher> and define
-C<on_PUBLISHED> on your class. Most handlers just receive the appropriate
+=head1 COMMON METHODS: CLIENTS
+
+Each client class implements the following methods:
+
+=head2 I<CLASS>->new( %OPTS )
+
+… with %OPTS being:
+
+=over
+
+=item * C<on_send> (required): A coderef that gets called for each message
+the client will send. This coderef must send this message to whatever transport
+layer (e.g., WebSocket, RawSocket, …) you’re using.
+
+=item * C<serialization>: C<json> (default); eventually C<msgpack> will
+work, but L<not yet|https://github.com/msgpack/msgpack-perl/issues/17>.
+
+=back
+
+=head2 I<OBJ>->send_HELLO( REALM, METADATA_HR )
+
+Sends a HELLO message to the given REALM. METADATA_HR is optional and,
+if given, will be merged with the features data for this framework.
+
+=head2 I<OBJ>->send_GOODBYE( METADATA_HR, REASON )
+
+=head2 I<OBJ>->send_ABORT( METADATA_HR, REASON )
+
+See the WAMP specification for what these do.
+
+=head2 I<OBJ>->handle_message( SERIALIZED_MESSAGE )
+
+For each message you receive from your transport layer, send the message
+payload into this method. For example, if you’re using WebSocket, the WebSocket
+message’s payload is what this function should receive. This method will
+convert this raw payload into a message object (i.e., an instance of a
+subclass of L<Net::WAMP::Message>), which will be handled internally and
+send to whatever handler your role class might define for that message.
+
+=head1 CLIENT SUBCLASS INTERFACE
+
+=head2 I<OBJ>->REQUIRE_STRICT_PEER_ROLES()
+
+This method governs whether Net::WAMP will require a peer to disclose its
+role correctly in order to send a message to it. Not all WAMP implementations
+advertise roles according to the WAMP specification in their HELLO/WELCOME,
+so this can be useful for accommodating such libraries.
+
+=head1 WRITING A ROUTER
+
+The bad news is: WAMP Routers are more complicated than Clients. They all
+but guarantee a
+requirement for multiplexed I/O, and they have to maintain state, manage
+access control, etc.
+
+The good news is: Net::WAMP takes care of lots of that for you! So once
+you’ve got your transport set up, Router behavior becomes reasonably
+straightforward.
+
+Net::WAMP does NOT implement everything you need to build a Router; instead,
+it implements just the WAMP parts. You can decide for yourself how you want
+to do things like I/O.
+
+The router workflow is:
+
+=over
+
+=item 1) Accept a new connection.
+
+=item 2) Set up transport with this new connection.
+
+=item 3) Create a L<Net::WAMP::Session> object with the new connection.
+(The client should have told you by now which serialization it wants.)
+
+=item 4) Now C<handle_message()>, essentially the same as with the Client.
+
+=head1 COMMON METHODS: ROUTER
+
+Router methods mirror their client counterparts, but generally with the
+addition of a L<Net::WAMP::Session> object:
+
+=head2 I<CLASS>->new()
+
+Currently this takes no parameters.
+
+=head2 I<OBJ>->handle_message( SESSION_OBJ, SERIALIZED_MESSAGE )
+
+Just like its client counterpart, but the SESSION_OBJ tells the Router
+where the message came from.
+
+=head2 I<OBJ>->send_GOODBYE( SESSION_OBJ, METADATA_HR, REASON )
+
+=head2 I<OBJ>->send_ABORT( SESSION_OBJ, METADATA_HR, REASON )
+
+See the WAMP specification for what these do.
+
+=head2 I<OBJ>->forget_session( SESSION_OBJ )
+
+“Forget”s a session object by removing all traces of it from the
+Router object internals. You’ll probably only do this when a WAMP
+session has ended.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+=head1 ROLE MESSAGE HANDLERS
+
+Each role has specific message types that it receives; for
+example, a Subscriber receives EVENT messages. If you write a Subscriber
+application, you’ll probably need to consume these messages. To do this,
+define an C<on_EVENT()> method. Likewise, a Caller class will probably
+define an C<on_RESULT()> method, just as a Callee will define
+C<on_INVOCATION>.
+
+B<ERROR messages> are special: use methods C<on_ERROR_CALL()>, etc.
+
+Most handlers just receive the appropriate
 Message object (more on these later); see the individual modules’
 documentation for variances from that pattern.
 
-=head2 I/O
+=head1 I/O
 
 To maximize flexibility, Net::WAMP does not read or write directly to
 filehandles; instead, it accepts serialized messages (via the
@@ -144,7 +303,7 @@ you—receives data in the appropriate message chunks already
 serialized message to send. This makes it possible to nest WAMP within
 some other transport mechanism—even another messaging protocol!
 
-=head3 WAMP “RawSocket”
+=head2 WAMP “RawSocket”
 
 Net::WAMP includes a full implementation of WAMP’s “RawSocket” protocol
 in L<Net::WAMP::RawSocket>. This protocol is simpler than
@@ -154,13 +313,18 @@ hard upper limit on message size: if you think you might want to transmit
 single messages of over 8 MiB, you’ll need some other transport mechanism
 besides RawSocket.
 
-=head3 Serializations
+=head1 SERIALIZATIONS
 
 WAMP defines two serializations officially: L<JSON|http://json.org>
 (C<json>)
 and L<MessagePack|http://msgpack.org> (C<msgpack>). Net::WAMP only supports
 JSON for now, though
 L<MessagePack support should arrive soon|https://github.com/msgpack/msgpack-perl/issues/17>.
+
+=head1 BOOLEAN VALUES
+
+Net::WAMP uses L<Types::Serialiser> to represent boolean values. You’ll
+need to do likewise to interact with Net::WAMP. (Sorry.)
 
 =head1 ROLE CLASSES
 

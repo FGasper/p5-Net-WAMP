@@ -7,4 +7,6 @@ use parent qw( Net::WAMP::Base::Message );
 
 use constant PARTS => qw( Request );
 
+use constant NUMERIC => qw( Request );
+
 1;

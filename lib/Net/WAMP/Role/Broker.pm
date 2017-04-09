@@ -1,5 +1,83 @@
 package Net::WAMP::Role::Broker;
 
+=encoding utf-8
+
+=head1 NAME
+
+Net::WAMP::Role::Broker - Broker role for Net::WAMP
+
+=head1 SYNOPSIS
+
+    package MyRouter;
+
+    use parent qw( Net::WAMP::Role::Router );
+
+    #For security, this defaults to rejecting everything!
+    sub deny_PUBLISH {
+        my ($self, $SUBSCRIBE_msg) = @_;
+
+        my $session_obj = $self->get_session();
+
+        #success
+        return;
+
+        #fail, generic (Error = wamp.error.not_authorized)
+        return 1;
+
+        #fail, custom Metadata (Error = wamp.error.not_authorized)
+        return { foo => 1 };
+
+        #fail, generic Metadata, custom Error
+        return 1, 'myapp.error.go_away';
+
+        #fail, custom Metadata and Error
+        return { foo => 1 }, 'myapp.error.go_away';
+    }
+
+    #This follows the same pattern as deny_PUBLISH().
+    #It also defaults to rejecting everything.
+    sub deny_SUBSCRIBE { ... }
+
+=head1 DESCRIPTION
+
+This is an B<EXPERIMENTAL> WAMP Broker implementation. If you use it,
+please send feedback!
+
+=head1 AUTHORIZATION
+
+To have a useful Broker you’ll need to create a C<deny_PUBLISH> method,
+since the default is to deny all PUBLISH requests.
+If that Broker is to allow SUBSCRIBE requests, you’ll also need a
+C<deny_SUBSCRIBE()> method. The format of these is described above.
+
+=head1 METHODS
+
+Broker only exposes a few public methods:
+
+=head2 $subscr_id = I<OBJ>->subscribe( SESSION_OBJ, METADATA_HR, TOPIC )
+
+This function subscribes a session to a topic, independently of actual WAMP
+messaging. This is useful, e.g., if you want to “auto-subscribe” a session
+to a topic.
+
+The return is the same number that is sent in a SUBSCRIBED message’s
+C<Subscription>. No SUBSCRIBED message is sent, however.
+
+=head2 I<OBJ>->unsubscribe( SESSION_OBJ, SUBSCR_ID )
+
+Undoes a subscription, without sending an UNSUBSCRIBED message.
+
+=head2 I<OBJ>->publish( SESSION_OBJ, METADATA_HR, TOPIC );
+
+=head2 I<OBJ>->publish( SESSION_OBJ, METADATA_HR, TOPIC, @ARGS );
+
+=head2 I<OBJ>->publish( SESSION_OBJ, METADATA_HR, TOPIC, @ARGS, %ARGS_KV );
+
+Publish a message. The return is the publication ID, which is sent
+in the EVENT messages’ C<Publication>.
+
+=cut
+
 use strict;
 use warnings;
 
@@ -8,6 +86,16 @@ use Try::Tiny;
 use parent qw(
   Net::WAMP::Role::Base::Router
 );
+
+use constant {
+    deny_SUBSCRIBE => 1,
+    deny_PUBLISH => 1,
+
+    receiver_role_of_EVENT => 'subscriber',
+    receiver_role_of_SUBSCRIBED => 'subscriber',
+    receiver_role_of_UNSUBSCRIBED => 'subscriber',
+    receiver_role_of_PUBLISHED => 'publisher',
+};
 
 use Types::Serialiser ();
 
@@ -22,6 +110,8 @@ BEGIN {
 
 sub subscribe {
     my ($self, $session, $options, $topic) = @_;
+
+    $self->_validate_uri($topic);
 
     my $subscribers_hr = $self->_get_topic_subscribers($session, $topic);
 
@@ -75,12 +165,12 @@ sub publish {
         #Implements “Publisher Exclusion” feature
         if ( $session eq $rcp->{'session'} ) {
             next if !Types::Serialiser::is_false($options->{'exclude_me'});
-            my $exclusion = $self->{'_state'}->get_session_property($session, 'peer_roles')->{'publisher'}{'features'}{'publisher_exclusion'};
-            next if !Types::Serialiser::is_true($exclusion);
+            next if !$session->peer_role_supports_boolean('publisher', 'publisher_exclusion');
         }
 
+        local $self->{'_session'} = $rcp->{'session'};
+
         $self->_send_EVENT(
-            $rcp->{'session'},
             $rcp->{'subscription'},
             $publication,
             {}, #TODO ???
@@ -109,25 +199,63 @@ sub _get_topic_subscribers {
 #----------------------------------------------------------------------
 
 sub _receive_SUBSCRIBE {
-    my ($self, $session, $msg) = @_;
+    my ($self, $msg) = @_;
 
-    my $subscription = $self->subscribe(
-        $session,
-        ( map { $msg->get($_) } qw( Options Topic ) ),
-    );
+    my ($meta_hr, $error) = $self->deny_SUBSCRIBE($msg);
+    if ($meta_hr) {
+        $self->_create_and_send_ERROR(
+            'SUBSCRIBE',
+            $msg->get('Request'),
+            ref($meta_hr) ? $meta_hr : {},
+            $error || 'wamp.error.not_authorized',
+        );
 
-    return $self->_send_SUBSCRIBED(
-        $session,
+        return;
+    }
+
+    my $subscription;
+
+    $self->_catch_exception(
+        'SUBSCRIBE',
         $msg->get('Request'),
-        $subscription,
+        sub {
+            try {
+                $subscription = $self->subscribe(
+                    $self->{'_session'},
+                    ( map { $msg->get($_) } qw( Options Topic ) ),
+                );
+
+                $self->_send_SUBSCRIBED(
+                    $msg->get('Request'),
+                    $subscription,
+                );
+            }
+            catch {
+                if ( try { $_->isa('Net::WAMP::X::BadURI') } ) {
+                    $self->_create_and_send_ERROR(
+                        'SUBSCRIBE',
+                        $msg->get('Request'),
+                        {
+                            net_wamp_message => $_->get_message(),
+                        },
+                        'wamp.error.invalid_uri',
+                    );
+                }
+                else {
+                    local $@ = $_;
+                    die;
+                }
+            };
+        },
     );
+
+    return;
 }
 
 sub _send_SUBSCRIBED {
-    my ($self, $session, $req_id, $sub_id) = @_;
+    my ($self, $req_id, $sub_id) = @_;
 
     return $self->_create_and_send_msg(
-        $session,
         'SUBSCRIBED',
         $req_id,
         $sub_id,
@@ -135,20 +263,19 @@ sub _send_SUBSCRIBED {
 }
 
 sub _receive_UNSUBSCRIBE {
-    my ($self, $session, $msg) = @_;
+    my ($self, $msg) = @_;
 
     try {
         $self->unsubscribe(
-            $session,
+            $self->{'_session'},
             $msg->get('Subscription'),
         );
 
-        $self->_send_UNSUBSCRIBED( $session, $msg->get('Request') );
+        $self->_send_UNSUBSCRIBED( $msg->get('Request') );
     }
     catch {
         if ( try { $_->isa('Net::WAMP::X::NoSuchSubscription') } ) {
             $self->_create_and_send_ERROR(
-                $session,
                 'UNSUBSCRIBE',
                 $msg->get('Request'),
                 {
@@ -167,63 +294,67 @@ sub _receive_UNSUBSCRIBE {
 }
 
 sub _send_UNSUBSCRIBED {
-    my ($self, $session, $req_id) = @_;
+    my ($self, $req_id) = @_;
 
     return $self->_create_and_send_msg(
-        $session,
         'UNSUBSCRIBED',
         $req_id,
     );
 }
 
 sub _receive_PUBLISH {
-    my ($self, $session, $msg) = @_;
+    my ($self, $msg) = @_;
 
-    try {
-        my $publication = $self->publish(
-            $session,
-            map { $msg->get($_) } qw(
-                Options
-                Topic
-                Arguments
-                ArgumentsKw
-            ),
-        );
+    my $publication;
 
-        if (Types::Serialiser::is_true($msg->get('Options')->{'acknowledge'})) {
-            $self->_send_PUBLISHED(
-                $session,
-                $msg->get('Request'),
-                $publication,
-            );
-        }
-    }
-    catch {
-        if ( try { $_->isa('Net::WAMP::X::BadURI') } ) {
-            $self->_create_and_send_ERROR(
-                $session,
-                'PUBLISH',
-                $msg->get('Request'),
-                {
-                    net_wamp_message => $_->get_message(),
-                },
-                'wamp.error.invalid_uri',
-            );
-        }
-        else {
-            local $@ = $_;
-            die;
-        }
-    };
+    $self->_catch_exception(
+        'PUBLISH',
+        $msg->get('Request'),
+        sub {
+            try {
+                $publication = $self->publish(
+                    $self->{'_session'},
+                    map { $msg->get($_) } qw(
+                        Options
+                        Topic
+                        Arguments
+                        ArgumentsKw
+                    ),
+                );
 
-    return;
+                if (Types::Serialiser::is_true($msg->get('Options')->{'acknowledge'})) {
+                    $self->_send_PUBLISHED(
+                        $msg->get('Request'),
+                        $publication,
+                    );
+                }
+            }
+            catch {
+                if ( try { $_->isa('Net::WAMP::X::BadURI') } ) {
+                    $self->_create_and_send_ERROR(
+                        'PUBLISH',
+                        $msg->get('Request'),
+                        {
+                            net_wamp_message => $_->get_message(),
+                        },
+                        'wamp.error.invalid_uri',
+                    );
+                }
+                else {
+                    local $@ = $_;
+                    warn;
+                }
+            };
+        },
+    );
+
+    return $publication || ();
 }
 
 sub _send_PUBLISHED {
-    my ($self, $session, $req_id, $pub_id) = @_;
+    my ($self, $req_id, $pub_id) = @_;
 
     return $self->_create_and_send_msg(
-        $session,
         'PUBLISHED',
         $req_id,
         $pub_id,
@@ -231,10 +362,9 @@ sub _send_PUBLISHED {
 }
 
 sub _send_EVENT {
-    my ($self, $session, $sub_id, $pub_id, $details, @args) = @_;
+    my ($self, $sub_id, $pub_id, $details, @args) = @_;
 
     return $self->_create_and_send_msg(
-        $session,
         'EVENT',
         $sub_id,
         $pub_id,

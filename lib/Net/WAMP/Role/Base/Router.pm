@@ -7,6 +7,7 @@ use Try::Tiny;
 
 use parent qw(
     Net::WAMP::Role::Base::Peer
+    Net::WAMP::Role::Base::CanError
 );
 
 use Module::Load ();
@@ -14,12 +15,21 @@ use Module::Load ();
 use Net::WAMP::Messages ();
 use Net::WAMP::Utils ();
 
+use constant STATE_OBJ_CLASS => 'Net::WAMP::Role::Base::Router::State::Memory';
+
+use constant PEER_CAN_ACCEPT => (
+    __PACKAGE__->SUPER::PEER_CAN_ACCEPT(),
+    'WELCOME',
+);
+
 sub new {
     my ($class, $state_obj) = @_;
 
+    my $state_obj_class = $class->STATE_OBJ_CLASS();
+
     $state_obj ||= do {
-        Module::Load::load('Net::WAMP::Role::Base::Router::State::Memory');
-        Net::WAMP::Role::Base::Router::State::Memory->new();
+        Module::Load::load($state_obj_class);
+        $state_obj_class->new();
     };
 
     return bless {
@@ -28,45 +38,42 @@ sub new {
 }
 
 sub handle_message {
-    my ($self, $msg, $session) = @_;
+    my ($self, $session) = @_;  #also $serialized_msg
 
-    my ($handler_cr, $handler2_cr) = $self->_get_message_handlers($msg);
+    #This works because each individual message handling instance
+    #treats a single peer.
+    local $self->{'_session'} = $session;
 
-    local $self->{'_prevent_custom_handler'};
-
-use Data::Dumper;
-print STDERR Dumper('route', $msg);
-    my @extra_args = $handler_cr->( $self, $session, $msg );
-
-    #Check for external method definition
-    if (!$self->{'_prevent_custom_handler'} && $handler2_cr) {
-        $handler2_cr->( $self, $session, $msg, @extra_args );
-    }
-
-    return $msg;
+    return $self->SUPER::handle_message(@_[ 2 .. $#_ ]);
 }
 
 sub forget_session {
     my ($self, $session) = @_;
 
     $self->{'_state'}->forget_session($session);
+    delete $self->{'_session_peer_groks_msg'}{$session};
 
     return;
+}
+
+sub send_ABORT {
+    my ($self, $session, $details, $reason) = @_;
+
+    local $self->{'_session'} = $session;
+
+    my $msg = $self->SUPER::send_GOODBYE( $details, $reason );
+
+    $self->forget_session($session);
+
+    return $msg;
 }
 
 sub send_GOODBYE {
     my ($self, $session, $details, $reason) = @_;
 
-    my $msg = $self->_create_and_send_msg(
-        $session,
-        'GOODBYE',
-        $details,
-        $reason,
-    );
+    local $self->{'_session'} = $session;
 
-    $self->{'_sent_GOODBYE'} = 1;
-
-    return $msg;
+    return $self->SUPER::send_GOODBYE( $details, $reason );
 }
 
 #Subclasses can safely override. They’ll probably want to call into
@@ -74,7 +81,19 @@ sub send_GOODBYE {
 sub GET_DETAILS_HR {
     my ($self) = @_;
 
-    return { roles => \%Net::WAMP::Role::Base::Router::Features::FEATURES };
+    my $details_hr = {
+        roles => \%Net::WAMP::Role::Base::Router::Features::FEATURES,
+    };
+
+    if (my $agent = $self->get_agent_string()) {
+        $details_hr->{'agent'} = $agent;
+    }
+
+    return $details_hr;
+}
+
+sub get_session {
+    return $_[0]->{'_session'};
 }
 
 #----------------------------------------------------------------------
@@ -85,70 +104,94 @@ sub _get_realm_for_session {
     return $self->{'_state'}->get_realm_for_session($session);
 }
 
-use constant _validate_HELLO => undef;
-
 sub _receive_HELLO {
-    my ($self, $session, $msg) = @_;
+    my ($self, $msg) = @_;
 
-    my $session_id = Net::WAMP::Utils::generate_global_id();
-
-    $self->_catch_pre_handshake_exception(
-        $session,
+    return if !$self->_catch_pre_handshake_exception(
         sub {
-            if ($self->{'_state'}->session_exists($session)) {
-                die "$self already received HELLO from $session!";
+            my $protocol_error;
+
+            if ($self->{'_state'}->session_exists($self->{'_session'})) {
+                $protocol_error = 'second HELLO';
+            }
+            elsif ( !length $msg->get('Realm') ) {
+                $protocol_error = 'missing “Realm”';
+            }
+            else {
+                my $roles_hr = $msg->get('Details')->{'roles'};
+
+                if (!$roles_hr || !%$roles_hr) {
+                    $protocol_error = 'missing “Details.roles”';
+                }
+                else {
+                    my ($meta_hr, $error) = $self->deny_HELLO($msg);
+                    if ($meta_hr) {
+                        $self->send_ABORT(
+                            $self->{'_session'},
+                            ref($meta_hr) ? $meta_hr : {},
+                            $error || 'wamp.error.not_authorized',
+                        );
+                        return;
+                    }
+
+                    $self->{'_state'}->add_session(
+                        $self->{'_session'},
+                        $msg->get('Realm'),
+                    );
+
+                    $self->{'_session'}->set_peer_roles($roles_hr);
+
+                    return 1;
+                }
             }
 
-            $self->_validate_HELLO($msg);
-
-            $self->{'_state'}->add_session(
-                $session,
-                $msg->get('Realm') || do {
-                    die "Missing “Realm” in HELLO!";  #XXX
-                },
+            $self->send_ABORT(
+                $self->{'_session'},
+                { message => $protocol_error },
+                'net_wamp.protocol_error',
             );
 
-            $self->{'_state'}->set_session_property(
-                $session,
-                'peer_roles',
-                $msg->get('Details')->{'roles'} || do {
-                    die "Missing “Details.roles” in HELLO!";  #XXX
-                },
-            );
+            return;
         },
     );
 
+    my $session_id = Net::WAMP::Utils::generate_global_id();
+
     $self->{'_state'}->set_session_property(
-        $session,
+        $self->{'_session'},
         'session_id',
         $session_id,
     );
 
-    $self->_send_WELCOME($session, $session_id);
+    $self->_send_WELCOME($session_id);
 
     return;
 }
 
 sub _send_WELCOME {
-    my ($self, $session, $session_id) = @_;
+    my ($self, $session_id) = @_;
+
+    my $details_hr = $self->GET_DETAILS_HR();
 
     my $msg = $self->_create_and_send_msg(
-        $session,
         'WELCOME',
         $session_id,
-        $self->GET_DETAILS_HR(),
+        $details_hr,
     );
 
     return $msg;
 }
 
 sub _receive_GOODBYE {
-    my ($self, $session, $msg) = @_;
+    my ($self, $msg) = @_;
 
-    $self->{'_state'}->forget_session($session);
+    $self->{'_state'}->forget_session($self->{'_session'});
 
-    if (!$session->is_shut_down()) {
-        $self->send_GOODBYE( $session, $msg->get('Details'), $msg->get('Reason') );
+    if (!$self->{'_session'}->is_shut_down()) {
+        $self->SUPER::send_GOODBYE(
+            $msg->get('Details'),
+            $msg->get('Reason'),
+        );
     }
 
     return $self;
@@ -162,94 +205,24 @@ sub _receive_GOODBYE {
 
 #----------------------------------------------------------------------
 
-sub _create_and_send_msg {
-    my ($self, $session, $name, @parts) = @_;
+sub _check_peer_roles_before_send {
+    my ($self, $msg) = @_;
 
-    #This is in Peer.pm
-    my $msg = $self->_create_msg($name, @parts);
-
-    $self->_send_msg($session, $msg);
-
-    return $msg;
-}
-
-sub _create_and_send_session_msg {
-    my ($self, $session, $name, @parts) = @_;
-
-    #This is in Peer.pm
-    my $msg = $self->_create_msg(
-        $name,
-        $session->get_next_session_scope_id(),
-        @parts,
-    );
-
-    $self->_send_msg($session, $msg);
-
-    return $msg;
-}
-
-sub _send_msg {
-    my ($self, $session, $msg) = @_;
+    my $session = $self->{'_session'};
 
     #cache
-    $self->{'_session_peer_groks_msg'}{$session}{$msg->get_type()} ||= do {
-#        $self->_verify_receiver_can_accept_msg_type($msg->get_type());
-        1;
-    };
-print STDERR "Enqueueing for $session\n";
-
-    $session->send_message($msg);
-
-    return $self;
+    if ($self->REQUIRE_STRICT_PEER_ROLES()) {
+        $self->{'_session_peer_groks_msg'}{$session}{$msg->get_type()} ||= do {
+            $self->_verify_receiver_can_accept_msg_type($msg->get_type());
+            1;
+        };
+    }
 }
 
 #----------------------------------------------------------------------
 
-sub _create_and_send_ERROR {
-    my ($self, $session, $subtype, @args) = @_;
-
-    #This is local()ed in handle_message().
-    $self->{'_prevent_custom_handler'} = 1;
-
-    return $self->_create_and_send_msg(
-        $session,
-        'ERROR',
-        Net::WAMP::Messages::get_type_number($subtype),
-        @args,
-    );
-}
-
-sub _catch_exception {
-    my ($self, $session, $req_type, $req_id, $todo_cr) = @_;
-
-    my $ret;
-
-    my $id = substr( rand, 2 );
-
-    try {
-        $ret = $todo_cr->();
-    }
-    catch {
-
-        #Anything we catch here is likely not something we want
-        #a client to know about.
-
-        warn "ERROR XID $id: $_";
-
-        $self->_create_and_send_ERROR(
-            $session,
-            $req_type,
-            $req_id,
-            'net_wamp.error',
-            [ "internal error (XID $id)" ],
-        );
-    };
-
-    return $ret;
-}
-
 sub _catch_pre_handshake_exception {
-    my ($self, $session, $todo_cr) = @_;
+    my ($self, $todo_cr) = @_;
 
     my $ret;
 
@@ -258,66 +231,78 @@ sub _catch_pre_handshake_exception {
     }
     catch {
         $self->_create_and_send_msg(
-            $session,
             'ABORT',
             {
                 message => "$_",
             },
-            'net-wamp.error',
+            'net_wamp.error',
         );
 
-        if ($self->{'_state'}->session_exists($session)) {
-            $self->{'_state'}->forget_session($session);
+        if ($self->{'_state'}->session_exists($self->{'_session'})) {
+            $self->{'_state'}->forget_session($self->{'_session'});
         }
     };
 
     return $ret;
 }
 
-sub _receive_ERROR {
-    my ($self, $session, $msg) = @_;
+sub _validate_uri_or_send_ERROR {
+    my ($self, $specimen, $subtype, $req_id) = @_;
 
-    my $subtype = $msg->get_request_type();
-    my $subhandler_n = "_receive_ERROR_$subtype";
+    my $ok;
+    try {
+        $self->_validate_uri($specimen);
+        $ok = 1;
+    }
+    catch {
+        $self->_create_and_send_ERROR(
+            $subtype,
+            $req_id,
+            {
+                net_wamp_message => $_->get_message(),
+            },
+            'wamp.error.invalid_uri',
+        );
+    };
 
-    return $self->$subhandler_n($session, $msg);
+    return $ok;
 }
 
 #----------------------------------------------------------------------
 #XXX Copy/paste …
 
-sub io_peer_is {
-    my ($self, $session, $role) = @_;
-
-    $self->_verify_handshake();
-
-    return $self->{'_state'}->get_session_property($session, 'peer_roles')->{$role} ? 1 : 0;
-}
-
-sub io_peer_role_supports_boolean {
-    my ($self, $session, $role, $feature) = @_;
-
-    die "Need role!" if !length $role;
-    die "Need feature!" if !length $feature;
-
-    $self->_verify_handshake();
-
-    my $peer_roles = $self->{'_state'}->get_session_property($session, 'peer_roles');
-
-    if ( my $rolfeat = $peer_roles->{$role} ) {
-        if ( my $features_hr = $rolfeat->{'features'} ) {
-            my $val = $features_hr->{$feature};
-            return 0 if !defined $val;
-
-            if (!$val->isa('Types::Serialiser::Boolean')) {
-                die "“$role”/“$feature” ($val) is not a boolean value!";
-            }
-
-            return $val ? 1 : 0;
-        }
-    }
-
-    return 0;
-}
+#sub _peer_is {
+#    my ($self, $session, $role) = @_;
+#
+#    $self->_verify_handshake();
+#
+#    return $self->{'_state'}->get_session_property($session, 'peer_roles')->{$role} ? 1 : 0;
+#}
+#
+#sub _peer_role_supports_boolean {
+#    my ($self, $session, $role, $feature) = @_;
+#
+#    die "Need role!" if !length $role;
+#    die "Need feature!" if !length $feature;
+#
+#    $self->_verify_handshake();
+#
+#    my $peer_roles = $self->{'_state'}->get_session_property($session, 'peer_roles');
+#
+#    if ( my $rolfeat = $peer_roles->{$role} ) {
+#        if ( my $features_hr = $rolfeat->{'features'} ) {
+#            my $val = $features_hr->{$feature};
+#            return 0 if !defined $val;
+#
+#            if (!$val->isa('Types::Serialiser::Boolean')) {
+#                die "“$role”/“$feature” ($val) is not a boolean value!";
+#            }
+#
+#            return $val ? 1 : 0;
+#        }
+#    }
+#
+#    return 0;
+#}
 
 1;

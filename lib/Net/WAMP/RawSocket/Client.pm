@@ -29,7 +29,6 @@ sub send_handshake {
 
     $self->_send_bytes(
         $self->_create_client_handshake(
-            $self->{'_max_receive_length'},
             $self->{'_serialization'},
         ),
     );
@@ -68,8 +67,6 @@ sub verify_handshake {
 sub _create_client_handshake {
     my ($self, $max_len, $serialization) = @_;
 
-    my $max_len_code = Net::WAMP::RawSocket::Constants::get_max_length_code($max_len);
-
     my $serialization_code = Net::WAMP::RawSocket::Constants::get_serialization_code($serialization);
 
     #Might as well save it for later
@@ -78,7 +75,7 @@ sub _create_client_handshake {
     return pack(
         'C*',
         Net::WAMP::RawSocket::Constants::MAGIC_FIRST_OCTET(),
-        ($max_len_code << 4) + $serialization_code,
+        ($self->{'_max_receive_code'} << 4) + $serialization_code,
         0, 0,   #reserved
     );
 }

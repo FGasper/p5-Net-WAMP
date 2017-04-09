@@ -1,5 +1,42 @@
 package Net::WAMP::Role::Caller;
 
+=encoding utf-8
+
+=head1 NAME
+
+Net::WAMP::Role::Caller - Caller role for Net::WAMP
+
+=head1 SYNOPSIS
+
+    package MyWAMP;
+
+    use parent qw( Net::WAMP::Role::Caller );
+
+    sub on_ERROR_CALL {
+        my ($self, $ERROR_msg, $orig_CALL_msg) = @_;
+        ...
+    }
+
+    sub on_RESULT {
+        my ($self, $RESULT_msg, $orig_CALL_msg) = @_;
+        ...
+    }
+
+    package main;
+
+    my $wamp = MyWAMP->new( on_send => sub { ... } );
+
+    my $call_msg = $wamp->send_CALL( {}, 'some.topic' );
+
+    $wamp->send_CANCEL( $call_msg->get('Request') );
+
+=head1 DESCRIPTION
+
+See the main L<Net::WAMP> documentation for more background on
+how to use this class in your code.
+
+=cut
+
 use strict;
 use warnings;
 
@@ -61,8 +98,8 @@ sub _receive_RESULT {
     #    die sprintf("Received RESULT for unknown! (%s)", $msg->get('Request')); #XXX
     #}
 
-    if ($msg->get('Details')->{'progress'}) {
-        if ($orig_msg && !$orig_msg->get('Options')->{'receive_progress'}) {
+    if ($msg->is_progress()) {
+        if ($orig_msg && !$orig_msg->caller_can_receive_progress()) {
             warn sprintf("Received unrequested progressive RESULT! (%s)", $msg->get('Request')); #XXX
         }
     }
@@ -70,7 +107,7 @@ sub _receive_RESULT {
         delete $self->{'_sent_CALL'}{ $msg->get('Request') };
     }
 
-    return;
+    return $orig_msg;
 }
 
 #----------------------------------------------------------------------

@@ -22,6 +22,15 @@ use parent qw(
     Net::WAMP::Role::Broker
 );
 
+#Wide open: route everything, no questions asked.
+use constant {
+    deny_HELLO => undef,
+    deny_PUBLISH => undef,
+    deny_SUBSCRIBE => undef,
+    deny_CALL => undef,
+    deny_REGISTER => undef,
+};
+
 #----------------------------------------------------------------------
 package main;
 
@@ -109,7 +118,7 @@ use Data::Dumper;
   FH:
     for my $fh (@$rdrs_ar) {
         if ($fh == $server) {
-            accept( my $connection, $server );
+            accept( my $connection, $server ) or die "accept(): $!";
 
             $connection->blocking(0);
             $select->add($connection);
@@ -170,8 +179,7 @@ use Data::Dumper;
 
             #transport-agnostic
             if ($msg) {
-                $msg = $sess->{'session'}->message_bytes_to_object($msg->get_payload());
-                $router->handle_message($msg, $sess->{'session'});
+                $router->handle_message($sess->{'session'}, $msg->get_payload());
             }
         }
 

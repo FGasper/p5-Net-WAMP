@@ -4,15 +4,102 @@ package Net::WAMP::Role::Callee;
 
 =head1 NAME
 
-Net::WAMP::Role::Callee
+Net::WAMP::Role::Caller - Caller role for Net::WAMP
 
 =head1 SYNOPSIS
 
-=head1 NOTES
+    package MyWAMP;
+
+    use parent qw( Net::WAMP::Role::Callee );
+
+    sub on_REGISTERED {
+        my ($self, $REGISTERED_msg) = @_;
+        ...
+    }
+
+    sub on_ERROR_REGISTER {
+        my ($self, $ERROR_msg, $REGISTER_msg) = @_;
+        ...
+    }
+
+    sub on_UNREGISTERED {
+        my ($self, $UNREGISTERED_msg) = @_;
+        ...
+    }
+
+    sub on_ERROR_UNREGISTER {
+        my ($self, $ERROR_msg, $UNREGISTER_msg) = @_;
+        ...
+    }
+
+    #----------------------------------------------------------------------
+
+    #NB: The appropriate ERROR message will already have been sent.
+    sub on_INTERRUPT {
+        my ($self, $INTERRUPT_msg, $interrupter) = @_;
+
+        ...
+
+        #This is optional, useful if you want to return specific
+        #information about the interrupted process (e.g., output thus far):
+        $interrupter->send_ERROR( {}, \@args, \%args_kw );
+
+        ...
+    }
+
+    #----------------------------------------------------------------------
+
+    #See below about $worker_obj:
+    sub on_INVOCATION {
+        my ($self, $msg, $worker_obj) = @_;
+    }
+
+    #----------------------------------------------------------------------
+
+    package main;
+
+    my $wamp = MyWAMP->new( on_send => sub { ... } );
+
+    my $reg_msg = $wamp->send_REGISTER( {}, 'some.procedure.name' );
+
+    $wamp->send_UNREGISTER( $reg_msg->get('Registration') );
+
+    $wamp->send_UNREGISTER_for_procedure( 'some.procedure.name' );
+
+    #This method returns the original REGISTER message object.
+    $wamp->get_REGISTER( $INVOCATION_msg );
+    $wamp->get_REGISTER( $registration_id );
+
+    #This method returns an INVOCATION object.
+    $wamp->get_INVOCATION( $msg );  #e.g., an ERROR or INTERRUPT
+    $wamp->get_INVOCATION( $request_id );
+
+    #You *can* do this, but the worker object makes this easier:
+    $wamp->send_YIELD( $req_id, {}, \@args, \%args_kv );
+    $wamp->send_ERROR( $req_id, {}, $err_uri, \@args, \%args_kv );
+
+=head1 DESCRIPTION
+
+Callee is the most complex client class to implement.
+
+The registration stuff follows a straightforward pattern. To answer
+INVOCATION messages, a special L<Net::WAMP::RPCWorker> class exists
+to simplify the work a bit.
+
+=head1 ANSWERING INVOCATION MESSAGES
+
+As in the SYNOPSIS above, you’ll create a C<on_INVOCATION()> method on
+your Callee class. That method will accept the arguments shown;
+C<$worker_obj> is an instance of L<Net::WAMP::RPCWorker>. This special
+subclass maintains the state of the request and should make life a bit
+simpler when implementing a Callee.
 
 It is suggested that, for long-running calls,
 Callee implementations C<fork()> in their C<on_INVOCATION()>, with
-the child sending the response data back to the parent process.
+the child sending the response data back to the parent process, which
+will then send the data into the RPCWorker object, where it will
+end up serialized and ready to send back to the router. There is an
+implementation of this in the Net::WAMP distribution’s demos.
 
 =cut
 
@@ -20,7 +107,8 @@ use strict;
 use warnings;
 
 use parent qw(
-    Net::WAMP::Role::Base::Client::CanError
+    Net::WAMP::Role::Base::Client
+    Net::WAMP::Role::Base::CanError
 );
 
 use Types::Serialiser ();
@@ -32,9 +120,6 @@ use constant {
     receiver_role_of_REGISTER => 'dealer',
     receiver_role_of_UNREGISTER => 'dealer',
     receiver_role_of_YIELD => 'dealer',
-
-    #Only the public method has anything to do here.
-    _receive_INTERRUPT => undef,
 
     RPCWorker_class => 'Net::WAMP::RPCWorker',
 };
@@ -82,19 +167,35 @@ sub _receive_REGISTERED {
         die "Received REGISTERED for unknown (Request=$req_id)!"; #XXX
     }
 
-    $self->{'_registrations'}{ $msg->get('Registration') } = $orig_reg->get('Procedure');
+    $self->{'_registrations'}{ $msg->get('Registration') } = $orig_reg;
 
     return;
 }
 
+sub get_REGISTER {
+    my ($self, $msg_or_reg_id) = @_;
+
+    my $reg_id = ref($msg_or_reg_id) ? $msg_or_reg_id->get('Registration') : $msg_or_reg_id;
+
+    return $self->{'_registrations'}{ $reg_id };
+}
+
 #----------------------------------------------------------------------
+
+sub get_INVOCATION {
+    my ($self, $msg_or_req_id) = @_;
+
+    my $req_id = ref($msg_or_req_id) ? $msg_or_req_id->get('Request') : $msg_or_req_id;
+
+    return $self->{'_invocations'}{ $req_id };
+}
 
 sub _receive_INVOCATION {
     my ($self, $msg) = @_;
 
-    my $procedure = $self->{'_registrations'}{ $msg->get('Registration') };
+    my $registration = $self->{'_registrations'}{ $msg->get('Registration') };
 
-    if (!length $procedure) {
+    if (!$registration) {
         my $reg_id = $msg->get('Registration');
         die "Received INVOCATION for unknown (Registration=$reg_id)!"; #XXX
     }
@@ -103,12 +204,23 @@ sub _receive_INVOCATION {
 
     my $worker_class = $self->RPCWorker_class();
 
-    return( $procedure, $worker_class->new( $self, $msg ) );
+    return $worker_class->new( $self, $msg );
 }
 
 #----------------------------------------------------------------------
 
 sub send_UNREGISTER {
+    my ($self, $reg_id) = @_;
+
+    my $msg = $self->_create_and_send_session_msg(
+        'UNREGISTER',
+        $reg_id,
+    );
+
+    return $self->{'_sent_UNREGISTER'}{$msg->get('Request')} = $msg;
+}
+
+sub send_UNREGISTER_for_procedure {
     my ($self, $uri) = @_;
 
     my $reg_id;
@@ -122,18 +234,13 @@ sub send_UNREGISTER {
 
     die "No registration for procedure “$uri”!" if !$reg_id;
 
-    my $msg = $self->_create_and_send_session_msg(
-        'UNREGISTER',
-        $reg_id,
-    );
-
-    return $self->{'_sent_UNREGISTER'}{$msg->get('Request')} = $msg;
+    return $self->send_UNREGISTER($reg_id);
 }
 
 sub _receive_ERROR_UNREGISTER {
     my ($self, $msg) = @_;
 
-    my $orig_msg = $self->{'_sent_UNREGISTER'}{$msg->get('Request')};
+    my $orig_msg = delete $self->{'_sent_UNREGISTER'}{$msg->get('Request')};
     if (!$orig_msg) {
         warn sprintf 'No tracked UNREGISTER for request ID “%s”!', $msg->get('Request');
     }
@@ -154,7 +261,7 @@ sub _receive_UNREGISTERED {
 
     delete $self->{'_registrations'}{ $reg };
 
-    return;
+    return $unreg_msg;
 }
 
 #----------------------------------------------------------------------
@@ -198,20 +305,49 @@ sub send_ERROR {
 #----------------------------------------------------------------------
 
 #Requires HELLO with roles.callee.features.call_canceling of true
-#sub _receive_INTERRUPT {
-#    my ($self, $msg) = @_;
-#
-#    my $req_id = $msg->get('Request');
-#
-#    my $worker = delete $self->{'_invocations'}{ $req_id };
-#
-#    if (!$worker) {
-#        die "Received INTERRUPT for unknown INVOCATION ($req_id)!";
-#    }
-#
-#    $worker->interrupt($msg);
-#
-#    return;
+sub _receive_INTERRUPT {
+    my ($self, $msg) = @_;
+
+    my $interrupter = Net::WAMP::Role::Callee::Interrupter->new( $self, $msg );
+
+    return $interrupter;
+}
+
+#----------------------------------------------------------------------
+
+package Net::WAMP::Role::Callee::Interrupter;
+
+sub new {
+    bless { _callee => $_[1], _msg => $_[2] }, $_[0];
+}
+
+#sub sent_ERROR {
+#    return $_[0]->{'_sent_error'};
 #}
+
+sub send_ERROR {
+    my ($self, $metadata_hr, @args) = @_;
+
+    die 'Already sent ERROR!' if $self->{'_sent_error'};
+
+    $self->{'_callee'}->send_ERROR(
+        $self->{'_msg'}->get('Request'),
+        $metadata_hr,
+        'wamp.error.canceled',
+        @args,
+    );
+
+    $self->{'_sent_error'} = 1;
+
+    return;
+}
+
+sub DESTROY {
+    my ($self) = @_;
+
+    $self->send_ERROR( {} ) if !$self->{'_sent_error'};
+
+    return;
+}
 
 1;
