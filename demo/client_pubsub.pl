@@ -1,6 +1,6 @@
 #!/usr/bin/env perl
 
-package WAMP_Client;
+package main;
 
 use strict;
 use warnings;
@@ -8,18 +8,6 @@ use autodie;
 
 use FindBin;
 use lib "$FindBin::Bin/../lib";
-
-use parent qw(
-    Net::WAMP::Role::Publisher
-    Net::WAMP::Role::Subscriber
-);
-
-use JSON;
-use Socket ();
-
-#----------------------------------------------------------------------
-
-package main;
 
 my $host_port = $ARGV[0] or die "Need [host:]port!";
 substr($host_port, 0, 0) = 'localhost:' if -1 == index($host_port, ':');
@@ -29,12 +17,13 @@ use Carp::Always;
 use HTTP::Response ();
 use IO::Framed::ReadWrite ();
 
-use FindBin;
-use lib "$FindBin::Bin/../../p5-Net-WebSocket/lib";
 use Net::WebSocket::Endpoint::Client ();
 use Net::WebSocket::Frame::text ();
 use Net::WebSocket::Handshake::Client ();
 use Net::WebSocket::Parser ();
+
+use JSON;
+use Socket ();
 
 use Types::Serialiser ();
 use IO::Socket::INET ();
@@ -120,7 +109,12 @@ print Dumper($client->handle_message($ept->get_next_message()->get_payload()));
 
 #----------------------------------------------------------------------
 
+package WAMP_Client;
 
+use parent qw(
+    Net::WAMP::Role::Publisher
+    Net::WAMP::Role::Subscriber
+);
 
 #----------------------------------------------------------------------
 

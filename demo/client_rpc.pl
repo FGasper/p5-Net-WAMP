@@ -1,70 +1,24 @@
 #!/usr/bin/env perl
 
-package WAMP_Client;
+package main;
 
 use strict;
 use warnings;
 use autodie;
 
+use IO::Socket::INET ();
+use Types::Serialiser ();
+
 use FindBin;
 use lib "$FindBin::Bin/../lib";
 
-use parent qw(
-    Net::WAMP::Role::Caller
-    Net::WAMP::Role::Callee
-);
-
-use IO::Framed::ReadWrite ();
-
-sub on_INVOCATION {
-    my ($self, $msg, $worker) = @_;
-
-    my $reg_msg = $self->get_REGISTER($msg);
-
-    my $procedure = $reg_msg->get('Procedure');
-
-    my $proc_snake = $procedure;
-    $proc_snake =~ tr<.><_>;
-
-    my $method_cr = $self->can("RPC_$proc_snake");
-    if (!$method_cr) {
-        die "Unknown RPC procedure: “$procedure”";
-    }
-
-    if ($msg->caller_can_receive_progress()) {
-print STDERR "caller can progress\n";
-use Data::Dumper;
-print STDERR Dumper $msg;
-        $worker->yield_progress( {}, [ $method_cr->($self, $msg) ] );
-    }
-
-    my $yld = $worker->yield( {}, [ $method_cr->($self, $msg) ] );
-
-    return;
-}
-
-sub RPC_com_myapp_sum {
-    my ($self, $msg, $worker) = @_;
-
-    my $sum = 0;
-    $sum += $_ for @{ $msg->get('Arguments') };
-
-    return $sum;
-}
-
-#----------------------------------------------------------------------
-
-package main;
+use Net::WAMP::RawSocket::Client ();
 
 my $SERIALIZATION = 'msgpack';
 
 my $host_port = $ARGV[0] or die "Need [host:]port!";
 substr($host_port, 0, 0) = 'localhost:' if -1 == index($host_port, ':');
 
-use Net::WAMP::RawSocket::Client ();
-
-use IO::Socket::INET ();
-#my $inet = IO::Socket::INET->new('demo.crossbar.io:80');
 my $inet = IO::Socket::INET->new(
     PeerAddr => $host_port,
     Blocking => 1,
@@ -131,6 +85,49 @@ print Dumper( _receive() );
 
 #----------------------------------------------------------------------
 
+package WAMP_Client;
 
+use parent qw(
+    Net::WAMP::Role::Caller
+    Net::WAMP::Role::Callee
+);
+
+use IO::Framed::ReadWrite ();
+
+sub on_INVOCATION {
+    my ($self, $msg, $worker) = @_;
+
+    my $reg_msg = $self->get_REGISTER($msg);
+
+    my $procedure = $reg_msg->get('Procedure');
+
+    my $proc_snake = $procedure;
+    $proc_snake =~ tr<.><_>;
+
+    my $method_cr = $self->can("RPC_$proc_snake");
+    if (!$method_cr) {
+        die "Unknown RPC procedure: “$procedure”";
+    }
+
+    if ($msg->caller_can_receive_progress()) {
+print STDERR "caller can progress\n";
+use Data::Dumper;
+print STDERR Dumper $msg;
+        $worker->yield_progress( {}, [ $method_cr->($self, $msg) ] );
+    }
+
+    my $yld = $worker->yield( {}, [ $method_cr->($self, $msg) ] );
+
+    return;
+}
+
+sub RPC_com_myapp_sum {
+    my ($self, $msg, $worker) = @_;
+
+    my $sum = 0;
+    $sum += $_ for @{ $msg->get('Arguments') };
+
+    return $sum;
+}
 
 1;
