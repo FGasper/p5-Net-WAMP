@@ -93,8 +93,11 @@ considered.
 
 Net::WAMP’s design aims to implement only WAMP and to be agnostic about
 anything else: which way you do transport, what you do with your messages,
-etc. This distribution does include an implementation of WAMP’s RawSocket
-protocol; however, nothing makes you use this particular implementation.
+etc. As a consequence, its footprint is pretty light, though you’ll likely
+want for other modules (e.g., L<Net::WebSocket>) to implement transport.
+This distribution does include an implementation of
+L<WAMP’s RawSocket protocol|http://wamp-proto.org/static/rfc/draft-oberstet-hybi-crossbar-wamp.html#rfc.section.14.5.3.1>;
+however, nothing compels you to use this particular implementation.
 If you wanted to use your own (maybe using XS?), nothing prevents you, and
 you should have minimal, if any, unused code loaded.
 
@@ -330,6 +333,10 @@ need to do likewise to interact with Net::WAMP. (Sorry.)
 
 Each message type has its own class. Each class has the following methods:
 
+=head2 I<OBJ>->get_type()
+
+e.g., C<HELLO>, C<PUBLISHED>, …
+
 =head2 I<OBJ>->get( KEY )
 
 Returns the value of the given key from the message. For all but one case,
@@ -343,10 +350,8 @@ You’ll notice that the WAMP specification defines either a C<Details> or
 C<Options>
 parameter for almost every message type. The logic behind this naming duality
 is not
-consistently applied; ostensibly C<Options> are for Client-to-Router while
-C<Details> are for Router-to-Client, but HELLO messages contain C<Details>.
-(??)
-Regardless, the duality serves no practical purpose since no message can have
+consistently applied, and the duality serves no practical purpose since no
+message can have
 both C<Options> and C<Details>. In my opinion, this is just two names for the
 same thing, which is just extra terminology to keep track of.
 For these reasons, Net::WAMP
@@ -355,9 +360,7 @@ use either of the other names for any of the message types that contains
 either (i.e., you can use C<Options> with C<HELLO> just the same as
 C<Details>).
 
-=head2 I<OBJ>->get_type()
-
-e.g., C<HELLO>, C<PUBLISHED>, …
+(NB: L<This may become a permanent change in the protocol specification.|https://github.com/wamp-proto/wamp-proto/issues/279>)
 
 =head1 SPECIFIC MESSAGE CLASSES
 
