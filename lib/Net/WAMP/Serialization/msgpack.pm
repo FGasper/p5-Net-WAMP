@@ -23,6 +23,8 @@ sub stringify {
 
     #Necessary until this merges:
     #https://github.com/bowman/Data-Rmap/pull/7
+    #… though Data::Rmap is itself only needed because
+    #of the Types::Serialiser problem in Data::MessagePack.
     while (1) {
         my $changed = 0;
 

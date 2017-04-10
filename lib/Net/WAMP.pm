@@ -177,9 +177,8 @@ Each client class implements the following methods:
 the client will send. This coderef must send this message to whatever transport
 layer (e.g., WebSocket, RawSocket, …) you’re using.
 
-=item * C<serialization> (optional): C<json> is the default;
-eventually C<msgpack> will
-work, but L<not yet|https://github.com/msgpack/msgpack-perl/issues/17>.
+=item * C<serialization> (optional): C<json> is the default; C<msgpack>
+is also an option.
 
 =back
 
@@ -313,10 +312,14 @@ two WAMP nodes that can speak raw TCP.
 
 WAMP defines two serializations officially: L<JSON|http://json.org>
 (C<json>)
-and L<MessagePack|http://msgpack.org> (C<msgpack>). Net::WAMP only works
-with
-JSON for now, though
-L<MessagePack support should arrive soon|https://github.com/msgpack/msgpack-perl/issues/17>.
+and L<MessagePack|http://msgpack.org> (C<msgpack>).
+
+Note that MessagePack is a bit
+inefficient for now owing to some hackery that works around
+Data::MessagePack’s proprietary boolean logic; hopefully that can go away
+after
+L<a certain pull request|https://github.com/msgpack/msgpack-perl/issues/17>.
+is merged.
 
 =head1 BOOLEAN VALUES
 

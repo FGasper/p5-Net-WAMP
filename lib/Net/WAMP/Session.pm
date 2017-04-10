@@ -1,5 +1,34 @@
 package Net::WAMP::Session;
 
+=encoding utf-8
+
+=head1 NAME
+
+Net::WAMP::Session
+
+=head1 SYNOPSIS
+
+    my $session = Net::WAMP::Session->new(
+
+        #required
+        on_send => sub { ... },
+
+        #optional; default is 'json'
+        serialization => 'msgpack',
+    );
+
+=head1 DISCUSSION
+
+The only thing externally documented about these objects is that
+they exist and how to instantiate them. A future refactor might
+obscure this functionality entirely—e.g., if the Router functionality
+of Net::WAMP becomes widely used.
+
+Please do not use any of the methods on these objects directly,
+as this interface is not at all meant to be stable.
+
+=cut
+
 use strict;
 use warnings;
 
